@@ -22,7 +22,7 @@ export default function Sidebar({ role = "student" }) {
 
   const adminMenu = [
     { label: "Dashboard", path: "/admin-dashboard" },
-    { label: "Add User", path: "/admin" },
+    { label: "Add User", path: "/add-user" },
     { label: "Profile", path: "/admin-profile" },
   ];
 

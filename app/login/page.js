@@ -11,8 +11,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    setMessage("");
+
     if (!name.trim()) {
-      setMessage("Please enter name");
+      setMessage(
+        role === "student"
+          ? "Please enter student login name"
+          : "Please enter name"
+      );
       return;
     }
 
@@ -32,7 +38,7 @@ export default function LoginPage() {
         const response = await supabase
           .from("students")
           .select("*")
-          .eq("name", name.trim())
+          .eq("login_name", name.trim())
           .eq("pin", pin.trim())
           .eq("active", true)
           .single();
@@ -49,13 +55,14 @@ export default function LoginPage() {
         const loginUser = {
           id: data.id,
           name: data.name,
+          login_name: data.login_name || "",
           role: "student",
           class_name: data.class_name || "",
           pin: data.pin || "",
         };
 
         localStorage.setItem("erp_user", JSON.stringify(loginUser));
-        setMessage(`Welcome ${data.name}`);
+        setMessage(`Welcome ${data.login_name || data.name}`);
         window.location.href = "/student-dashboard";
         return;
       }
@@ -143,7 +150,9 @@ export default function LoginPage() {
 
         <input
           type="text"
-          placeholder="Enter name"
+          placeholder={
+            role === "student" ? "Enter student login name" : "Enter name"
+          }
           className="mb-3 w-full rounded border p-2"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -166,6 +175,7 @@ export default function LoginPage() {
             setRole(e.target.value);
             setMessage("");
             setPin("");
+            setName("");
           }}
         >
           <option value="student">Student</option>

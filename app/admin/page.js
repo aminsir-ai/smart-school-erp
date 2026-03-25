@@ -1,7 +1,11 @@
-export default function UploadStudentsPage() {
-  return (
-    <div style={{ padding: 40, fontSize: 40, fontWeight: "bold", color: "red" }}>
-      NEW UPLOAD PAGE TEST
-    </div>
-  );
+"use client";
+
+import { useEffect } from "react";
+
+export default function AdminPage() {
+  useEffect(() => {
+    window.location.href = "/admin-dashboard";
+  }, []);
+
+  return null;
 }

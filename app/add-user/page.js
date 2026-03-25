@@ -8,68 +8,107 @@ export default function AddUserPage() {
   const [pin, setPin] = useState("");
   const [role, setRole] = useState("teacher");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleAddUser = async () => {
-    if (!name || !pin) {
-      alert("Please fill all fields");
+    setMessage("");
+
+    if (!name.trim() || !pin.trim()) {
+      setMessage("Please fill all fields");
       return;
     }
 
-    const table = role === "teacher" ? "teachers" : "students";
+    setLoading(true);
 
-    const { error } = await supabase.from(table).insert([
-      {
-        name,
-        pin,
-        active: true,
-      },
-    ]);
+    try {
+      const tableName = role === "teacher" ? "teachers" : "students";
 
-    if (error) {
-      console.log(error);
-      setMessage("Error adding user");
-    } else {
-      setMessage("User added successfully ✅");
+      const payload =
+        role === "teacher"
+          ? {
+              name: name.trim(),
+              pin: pin.trim(),
+              active: true,
+            }
+          : {
+              name: name.trim(),
+              pin: pin.trim(),
+              active: true,
+            };
+
+      const { error } = await supabase.from(tableName).insert([payload]);
+
+      if (error) {
+        console.log("ADD USER ERROR:", error);
+        setMessage(error.message || "Error adding user");
+        setLoading(false);
+        return;
+      }
+
+      setMessage(`${role === "teacher" ? "Teacher" : "Student"} added successfully ✅`);
       setName("");
       setPin("");
+      setRole("teacher");
+    } catch (error) {
+      console.log("UNEXPECTED ADD USER ERROR:", error);
+      setMessage("Something went wrong while adding user");
     }
+
+    setLoading(false);
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Add User</h1>
+    <div className="min-h-screen bg-gray-100 p-6">
+      <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow">
+        <h1 className="mb-6 text-3xl font-bold">Add User</h1>
 
-      <input
-        placeholder="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="border p-2 mb-3 w-full"
-      />
+        <div className="space-y-4">
+          <input
+            type="text"
+            placeholder="Enter name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
+          />
 
-      <input
-        placeholder="PIN"
-        value={pin}
-        onChange={(e) => setPin(e.target.value)}
-        className="border p-2 mb-3 w-full"
-      />
+          <input
+            type="text"
+            placeholder="Enter PIN"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
+          />
 
-      <select
-        value={role}
-        onChange={(e) => setRole(e.target.value)}
-        className="border p-2 mb-3 w-full"
-      >
-        <option value="teacher">Teacher</option>
-        <option value="student">Student</option>
-      </select>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
+          >
+            <option value="teacher">Teacher</option>
+            <option value="student">Student</option>
+          </select>
 
-      <button
-        onClick={handleAddUser}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        Add User
-      </button>
+          <button
+            onClick={handleAddUser}
+            disabled={loading}
+            className="rounded bg-blue-600 px-5 py-3 text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {loading ? "Adding..." : "Add User"}
+          </button>
 
-      {message && <p className="mt-3">{message}</p>}
+          {message && (
+            <p
+              className={`text-sm font-medium ${
+                message.toLowerCase().includes("success")
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

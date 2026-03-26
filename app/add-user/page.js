@@ -13,30 +13,48 @@ export default function AddUserPage() {
   const handleAddUser = async () => {
     setMessage("");
 
-    if (!name.trim() || !pin.trim()) {
-      setMessage("Please fill all fields");
+    if (!name.trim()) {
+      setMessage("Please enter name");
+      return;
+    }
+
+    if ((role === "teacher" || role === "student") && !pin.trim()) {
+      setMessage("Please enter PIN");
       return;
     }
 
     setLoading(true);
 
     try {
-      const tableName = role === "teacher" ? "teachers" : "students";
+      let error = null;
 
-      const payload =
-        role === "teacher"
-          ? {
-              name: name.trim(),
-              pin: pin.trim(),
-              active: true,
-            }
-          : {
-              name: name.trim(),
-              pin: pin.trim(),
-              active: true,
-            };
-
-      const { error } = await supabase.from(tableName).insert([payload]);
+      if (role === "teacher") {
+        const response = await supabase.from("teachers").insert([
+          {
+            name: name.trim(),
+            pin: pin.trim(),
+            active: true,
+          },
+        ]);
+        error = response.error;
+      } else if (role === "student") {
+        const response = await supabase.from("students").insert([
+          {
+            name: name.trim(),
+            pin: pin.trim(),
+            active: true,
+          },
+        ]);
+        error = response.error;
+      } else if (role === "admin" || role === "management") {
+        const response = await supabase.from("users").insert([
+          {
+            name: name.trim(),
+            role: role,
+          },
+        ]);
+        error = response.error;
+      }
 
       if (error) {
         console.log("ADD USER ERROR:", error);
@@ -45,7 +63,7 @@ export default function AddUserPage() {
         return;
       }
 
-      setMessage(`${role === "teacher" ? "Teacher" : "Student"} added successfully ✅`);
+      setMessage(`${role} added successfully ✅`);
       setName("");
       setPin("");
       setRole("teacher");
@@ -71,21 +89,31 @@ export default function AddUserPage() {
             className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
           />
 
-          <input
-            type="text"
-            placeholder="Enter PIN"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
-          />
+          {(role === "teacher" || role === "student") && (
+            <input
+              type="text"
+              placeholder="Enter PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
+            />
+          )}
 
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value)}
+            onChange={(e) => {
+              setRole(e.target.value);
+              setMessage("");
+              if (e.target.value === "admin" || e.target.value === "management") {
+                setPin("");
+              }
+            }}
             className="w-full rounded border border-gray-300 p-3 outline-none focus:border-blue-500"
           >
             <option value="teacher">Teacher</option>
             <option value="student">Student</option>
+            <option value="admin">Admin</option>
+            <option value="management">Management</option>
           </select>
 
           <button

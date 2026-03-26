@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 
-const CLASS_OPTIONS = ["All","3rd","4th","5th","6th","7th","8th","9th","10th"];
-
 export default function TeacherSubmissionsPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
   const [isAllowed, setIsAllowed] = useState(false);
-  const [submissions, setSubmissions] = useState([]);
-  const [filteredSubmissions, setFilteredSubmissions] = useState([]);
-  const [selectedClass, setSelectedClass] = useState("All");
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
+  const [submissions, setSubmissions] = useState([]);
+  const [worksMap, setWorksMap] = useState({});
+
+  const [classFilter, setClassFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -28,6 +32,7 @@ export default function TeacherSubmissionsPage() {
     try {
       user = JSON.parse(storedUser);
     } catch (error) {
+      console.log("USER PARSE ERROR:", error);
       localStorage.removeItem("erp_user");
       window.location.href = "/login";
       return;
@@ -40,49 +45,156 @@ export default function TeacherSubmissionsPage() {
 
     setTeacherName(user?.name || "Teacher");
     setIsAllowed(true);
-    fetchSubmissions();
   }, []);
 
   useEffect(() => {
-    if (selectedClass === "All") {
-      setFilteredSubmissions(submissions);
-    } else {
-      const filtered = submissions.filter(
-        (item) => item.class_name === selectedClass
-      );
-      setFilteredSubmissions(filtered);
-    }
-  }, [selectedClass, submissions]);
+    if (!isAllowed) return;
+    fetchSubmissionsData();
+  }, [isAllowed]);
 
-  const fetchSubmissions = async () => {
-    const { data, error } = await supabase
+  const fetchSubmissionsData = async () => {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const { data: worksData, error: worksError } = await supabase
+        .from("works")
+        .select("id, title, subject_name, class_name")
+        .order("created_at", { ascending: false });
+
+      if (worksError) {
+        console.log("WORKS FETCH ERROR:", worksError);
+        setMessage("Failed to load works");
+        setLoading(false);
+        return;
+      }
+
+      const workLookup = {};
+      (worksData || []).forEach((work) => {
+        workLookup[work.id] = work;
+      });
+      setWorksMap(workLookup);
+
+      const { data: submissionsData, error: submissionsError } = await supabase
+        .from("submissions")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (submissionsError) {
+        console.log("SUBMISSIONS FETCH ERROR:", submissionsError);
+        setMessage("Failed to load submissions");
+        setLoading(false);
+        return;
+      }
+
+      const enriched = (submissionsData || []).map((item) => {
+        const matchedWork = workLookup[item.work_id] || {};
+
+        return {
+          ...item,
+          work_title: item.work_title || matchedWork.title || "Untitled Work",
+          subject_name:
+            item.subject_name || matchedWork.subject_name || "Unknown Subject",
+          class_name:
+            item.class_name || matchedWork.class_name || "Unknown Class",
+          status: item.status || "Pending",
+        };
+      });
+
+      setSubmissions(enriched);
+    } catch (error) {
+      console.log("FETCH SUBMISSIONS DATA ERROR:", error);
+      setMessage("Something went wrong while loading submissions");
+    }
+
+    setLoading(false);
+  };
+
+  const handleUpdateStatus = async (submissionId, newStatus) => {
+    setMessage("");
+
+    const { error } = await supabase
       .from("submissions")
-      .select("*")
-      .order("created_at", { ascending: false });
+      .update({ status: newStatus })
+      .eq("id", submissionId);
 
     if (error) {
-      setMessage("Error loading submissions");
+      console.log("STATUS UPDATE ERROR:", error);
+      setMessage(`Failed to update status: ${error.message}`);
       return;
     }
 
-    setSubmissions(data || []);
-    setFilteredSubmissions(data || []);
+    setSubmissions((prev) =>
+      prev.map((item) =>
+        item.id === submissionId ? { ...item, status: newStatus } : item
+      )
+    );
+
+    setMessage("Submission status updated successfully");
   };
 
-  const isImageFile = (url) => {
-    if (!url) return false;
-    return /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
-  };
+  const classOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        submissions
+          .map((item) => String(item.class_name || "").trim())
+          .filter(Boolean)
+      )
+    ).sort();
+  }, [submissions]);
+
+  const subjectOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        submissions
+          .map((item) => String(item.subject_name || "").trim())
+          .filter(Boolean)
+      )
+    ).sort();
+  }, [submissions]);
+
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((item) => {
+      const matchClass =
+        classFilter === "all" ? true : item.class_name === classFilter;
+
+      const matchSubject =
+        subjectFilter === "all" ? true : item.subject_name === subjectFilter;
+
+      const matchStatus =
+        statusFilter === "all"
+          ? true
+          : String(item.status || "").toLowerCase() ===
+            statusFilter.toLowerCase();
+
+      const text = `${item.student_name || ""} ${item.work_title || ""} ${item.subject_name || ""} ${item.class_name || ""} ${item.answer_text || ""}`.toLowerCase();
+
+      const matchSearch = searchText.trim()
+        ? text.includes(searchText.trim().toLowerCase())
+        : true;
+
+      return matchClass && matchSubject && matchStatus && matchSearch;
+    });
+  }, [submissions, classFilter, subjectFilter, statusFilter, searchText]);
 
   const handleLogout = () => {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
   };
 
+  const formatDate = (value) => {
+    if (!value) return "-";
+    try {
+      return new Date(value).toLocaleDateString();
+    } catch {
+      return value;
+    }
+  };
+
   if (!isAllowed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        Checking access...
+        <p className="text-lg text-gray-600">Checking access...</p>
       </div>
     );
   }
@@ -95,88 +207,197 @@ export default function TeacherSubmissionsPage() {
         <Sidebar role="teacher" />
 
         <div className="flex-1 p-6">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <div className="rounded-xl bg-white p-6 shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Teacher - Submissions</h1>
+                  <p className="mt-2 text-gray-600">
+                    View student homework submissions and update their status
+                  </p>
+                </div>
 
-            {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
-              <h1 className="text-3xl font-bold">
-                Teacher - Student Submissions
-              </h1>
-
-              <button
-                onClick={handleLogout}
-                className="rounded bg-red-500 px-4 py-2 text-white"
-              >
-                Logout
-              </button>
+                <button
+                  onClick={handleLogout}
+                  className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
 
-            {/* 🔥 Class Filter */}
-            <div className="mb-4">
-              <label className="block mb-2 font-medium">Filter by Class</label>
-              <select
-                className="border p-2 rounded"
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-              >
-                {CLASS_OPTIONS.map((cls) => (
-                  <option key={cls}>{cls}</option>
-                ))}
-              </select>
+            <div className="rounded-xl bg-white p-6 shadow">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                <input
+                  type="text"
+                  placeholder="Search by student, title, answer..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="rounded border p-3"
+                />
+
+                <select
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="rounded border p-3"
+                >
+                  <option value="all">All Classes</option>
+                  {classOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={subjectFilter}
+                  onChange={(e) => setSubjectFilter(e.target.value)}
+                  className="rounded border p-3"
+                >
+                  <option value="all">All Subjects</option>
+                  {subjectOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="rounded border p-3"
+                >
+                  <option value="all">All Status</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Checked">Checked</option>
+                </select>
+
+                <button
+                  onClick={fetchSubmissionsData}
+                  className="rounded bg-blue-600 px-4 py-3 text-white hover:bg-blue-700"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {message ? (
+                <p className="mt-4 text-sm text-gray-700">{message}</p>
+              ) : null}
             </div>
 
-            {message && <p className="mb-4 text-red-600">{message}</p>}
-
-            {filteredSubmissions.length === 0 ? (
-              <div className="bg-white p-6 rounded-xl shadow">
-                No submissions found
+            <div className="rounded-xl bg-white p-6 shadow">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Submission List</h2>
+                <p className="text-sm text-gray-500">
+                  Total: {filteredSubmissions.length}
+                </p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredSubmissions.map((item) => (
-                  <div key={item.id} className="bg-white p-5 rounded-xl shadow">
-                    <div className="flex justify-between mb-2">
-                      <h2 className="text-lg font-bold">
-                        {item.student_name}
-                      </h2>
 
-                      <span className="font-semibold">
-                        {item.score}/10
-                      </span>
-                    </div>
+              {loading ? (
+                <p className="text-gray-500">Loading submissions...</p>
+              ) : filteredSubmissions.length === 0 ? (
+                <p className="text-gray-500">No submissions found</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Student
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Class
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Work Title
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Subject
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Answer
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Submitted
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Status
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
 
-                    <p className="text-sm text-gray-500">
-                      Class: {item.class_name}
-                    </p>
+                    <tbody>
+                      {filteredSubmissions.map((item) => (
+                        <tr key={item.id} className="hover:bg-gray-50">
+                          <td className="border-b px-4 py-3 text-sm text-gray-900">
+                            {item.student_name || "-"}
+                          </td>
 
-                    <p className="mt-2">{item.answer}</p>
+                          <td className="border-b px-4 py-3 text-sm text-gray-700">
+                            {item.class_name || "-"}
+                          </td>
 
-                    <p className="mt-2 text-gray-600">
-                      Feedback: {item.feedback}
-                    </p>
+                          <td className="border-b px-4 py-3 text-sm text-gray-700">
+                            {item.work_title || "-"}
+                          </td>
 
-                    {item.file_url && (
-                      <div className="mt-3">
-                        {isImageFile(item.file_url) ? (
-                          <img
-                            src={item.file_url}
-                            className="max-h-40 rounded"
-                          />
-                        ) : (
-                          <a
-                            href={item.file_url}
-                            target="_blank"
-                            className="text-blue-600 underline"
-                          >
-                            View File
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                          <td className="border-b px-4 py-3 text-sm text-gray-700">
+                            {item.subject_name || "-"}
+                          </td>
+
+                          <td className="border-b px-4 py-3 text-sm text-gray-700">
+                            <div className="max-w-xs whitespace-pre-wrap break-words">
+                              {item.answer_text || "-"}
+                            </div>
+                          </td>
+
+                          <td className="border-b px-4 py-3 text-sm text-gray-700">
+                            {formatDate(item.created_at)}
+                          </td>
+
+                          <td className="border-b px-4 py-3 text-center text-sm font-semibold">
+                            <span
+                              className={
+                                String(item.status).toLowerCase() === "checked"
+                                  ? "text-green-600"
+                                  : "text-orange-500"
+                              }
+                            >
+                              {item.status}
+                            </span>
+                          </td>
+
+                          <td className="border-b px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() =>
+                                  handleUpdateStatus(item.id, "Pending")
+                                }
+                                className="rounded bg-yellow-500 px-3 py-2 text-sm text-white hover:bg-yellow-600"
+                              >
+                                Pending
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  handleUpdateStatus(item.id, "Checked")
+                                }
+                                className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
+                              >
+                                Checked
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

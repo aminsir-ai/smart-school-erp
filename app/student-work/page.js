@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 
 export default function StudentWorkPage() {
-  const [works, setWorks] = useState([]);
-  const [groupedWorks, setGroupedWorks] = useState({});
-  const [answers, setAnswers] = useState({});
-  const [files, setFiles] = useState({});
-  const [message, setMessage] = useState("");
-  const [results, setResults] = useState({});
-  const [loadingId, setLoadingId] = useState("");
   const [studentName, setStudentName] = useState("Student");
   const [studentClass, setStudentClass] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
+
+  const [works, setWorks] = useState([]);
+  const [groupedWorks, setGroupedWorks] = useState({});
+  const [submissionMap, setSubmissionMap] = useState({});
+
+  const [answers, setAnswers] = useState({});
+  const [files, setFiles] = useState({});
+  const [loadingId, setLoadingId] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -47,23 +49,26 @@ export default function StudentWorkPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAllowed || !studentClass) return;
-    fetchWorks(studentClass);
-  }, [studentClass, isAllowed]);
+    if (!isAllowed || !studentClass || !studentName) return;
+    fetchWorksAndSubmissions(studentClass, studentName);
+  }, [isAllowed, studentClass, studentName]);
 
-  const fetchWorks = async (className) => {
-    const { data, error } = await supabase
+  const fetchWorksAndSubmissions = async (className, fullStudentName) => {
+    setMessage("");
+
+    const { data: worksData, error: worksError } = await supabase
       .from("works")
       .select("*")
       .eq("class_name", className)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.log("FETCH WORKS ERROR:", error);
+    if (worksError) {
+      console.log("FETCH WORKS ERROR:", worksError);
+      setMessage("Failed to load homework");
       return;
     }
 
-    const workList = data || [];
+    const workList = worksData || [];
     setWorks(workList);
 
     const grouped = {};
@@ -72,70 +77,27 @@ export default function StudentWorkPage() {
       if (!grouped[subject]) grouped[subject] = [];
       grouped[subject].push(work);
     });
-
     setGroupedWorks(grouped);
-  };
 
-  const calculateScoreAndFeedback = (studentAnswer, modelAnswer, keywords) => {
-    const answerText = String(studentAnswer || "").toLowerCase();
-    const modelText = String(modelAnswer || "").toLowerCase();
+    const { data: submissionsData, error: submissionsError } = await supabase
+      .from("submissions")
+      .select("*")
+      .eq("student_name", fullStudentName)
+      .order("created_at", { ascending: false });
 
-    let score = 0;
+    if (submissionsError) {
+      console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
+      return;
+    }
 
-    const keywordList = String(keywords || "")
-      .split(",")
-      .map((k) => k.trim().toLowerCase())
-      .filter(Boolean);
-
-    let keywordMatches = 0;
-
-    for (const keyword of keywordList) {
-      if (answerText.includes(keyword)) {
-        keywordMatches++;
+    const map = {};
+    (submissionsData || []).forEach((item) => {
+      if (!map[item.work_id]) {
+        map[item.work_id] = item;
       }
-    }
+    });
 
-    if (keywordList.length > 0) {
-      score += Math.round((keywordMatches / keywordList.length) * 6);
-    }
-
-    const answerWords = answerText.split(/\s+/).filter(Boolean).length;
-    const modelWords = modelText.split(/\s+/).filter(Boolean).length;
-
-    if (answerWords >= 5) score += 2;
-
-    if (
-      modelWords > 0 &&
-      answerWords >= Math.max(3, Math.floor(modelWords * 0.4))
-    ) {
-      score += 2;
-    }
-
-    if (score > 10) score = 10;
-
-    let feedback = "";
-    const missingKeywords = keywordList.filter(
-      (k) => !answerText.includes(k)
-    );
-
-    if (score >= 8) {
-      feedback = "Excellent answer. You covered most important points clearly.";
-    } else if (score >= 5) {
-      feedback = "Good attempt. Try to include more key points like: ";
-      feedback += missingKeywords.slice(0, 3).join(", ") || "important keywords";
-      feedback += ".";
-    } else {
-      feedback =
-        "Needs improvement. Your answer is too short or missing key ideas. ";
-
-      if (missingKeywords.length > 0) {
-        feedback += "Focus on keywords like: ";
-        feedback += missingKeywords.slice(0, 3).join(", ");
-        feedback += ".";
-      }
-    }
-
-    return { score, feedback };
+    setSubmissionMap(map);
   };
 
   const handleFileChange = (workId, file) => {
@@ -146,10 +108,10 @@ export default function StudentWorkPage() {
   };
 
   const handleSubmit = async (work) => {
-    const answer = answers[work.id] || "";
+    const answerText = String(answers[work.id] || "").trim();
     const selectedFile = files[work.id] || null;
 
-    if (!answer.trim() && !selectedFile) {
+    if (!answerText && !selectedFile) {
       setMessage("Please write an answer or upload a file");
       return;
     }
@@ -157,18 +119,22 @@ export default function StudentWorkPage() {
     setLoadingId(work.id);
     setMessage("");
 
-    let fileUrl = null;
+    let fileUrl = submissionMap[work.id]?.file_url || null;
+    let fileName = submissionMap[work.id]?.file_name || null;
 
     if (selectedFile) {
-      const safeFileName = `${Date.now()}-${selectedFile.name.replace(/\s+/g, "-")}`;
+      const safeFileName = `${Date.now()}-${studentName
+        .replace(/\s+/g, "-")
+        .toLowerCase()}-${selectedFile.name.replace(/\s+/g, "-")}`;
 
       const { error: uploadError } = await supabase.storage
         .from("homework-files")
-        .upload(safeFileName, selectedFile);
+        .upload(safeFileName, selectedFile, {
+          upsert: true,
+        });
 
       if (uploadError) {
         console.log("UPLOAD ERROR:", uploadError);
-        alert(`File upload failed: ${uploadError.message}`);
         setMessage(`File upload failed: ${uploadError.message}`);
         setLoadingId("");
         return;
@@ -178,49 +144,75 @@ export default function StudentWorkPage() {
         .from("homework-files")
         .getPublicUrl(safeFileName);
 
-      fileUrl = publicUrlData.publicUrl;
+      fileUrl = publicUrlData?.publicUrl || null;
+      fileName = selectedFile.name;
     }
 
-    const { score, feedback } = calculateScoreAndFeedback(
-      answer,
-      work.model_answer,
-      work.keywords
-    );
+    const existingSubmission = submissionMap[work.id];
 
     const payload = {
       work_id: work.id,
       student_name: studentName,
       class_name: studentClass,
-      answer: answer.trim(),
+      subject_name: work.subject_name || "",
+      work_title: work.title || "",
+      answer_text: answerText,
       file_url: fileUrl,
-      score,
-      feedback,
+      file_name: fileName,
+      status: "Pending",
+      submitted_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from("submissions").insert([payload]);
+    let error = null;
+    let savedRecord = null;
+
+    if (existingSubmission?.id) {
+      const response = await supabase
+        .from("submissions")
+        .update(payload)
+        .eq("id", existingSubmission.id)
+        .select()
+        .single();
+
+      error = response.error;
+      savedRecord = response.data;
+    } else {
+      const response = await supabase
+        .from("submissions")
+        .insert([payload])
+        .select()
+        .single();
+
+      error = response.error;
+      savedRecord = response.data;
+    }
 
     if (error) {
-      console.log("INSERT ERROR:", error);
-      alert(`Error saving submission: ${error.message}`);
+      console.log("SUBMISSION SAVE ERROR:", error);
       setMessage(`Error saving submission: ${error.message}`);
       setLoadingId("");
       return;
     }
 
-    setResults((prev) => ({
+    setSubmissionMap((prev) => ({
       ...prev,
-      [work.id]: { score, feedback, file_url: fileUrl },
+      [work.id]: savedRecord || {
+        ...payload,
+        id: existingSubmission?.id || work.id,
+      },
     }));
 
-    setMessage("Answer submitted successfully");
     setAnswers((prev) => ({
       ...prev,
       [work.id]: "",
     }));
+
     setFiles((prev) => ({
       ...prev,
       [work.id]: null,
     }));
+
+    setMessage(existingSubmission ? "Homework resubmitted successfully" : "Homework submitted successfully");
     setLoadingId("");
   };
 
@@ -228,6 +220,8 @@ export default function StudentWorkPage() {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
   };
+
+  const groupedSubjects = useMemo(() => Object.keys(groupedWorks), [groupedWorks]);
 
   if (!isAllowed) {
     return (
@@ -245,155 +239,197 @@ export default function StudentWorkPage() {
         <Sidebar role="student" />
 
         <div className="flex-1 p-6">
-          <div className="mx-auto max-w-4xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h1 className="mb-2 text-3xl font-bold">Student - Homework</h1>
-                <p className="text-gray-600">Class: {studentClass || "N/A"}</p>
-              </div>
+          <div className="mx-auto max-w-5xl space-y-6">
+            <div className="rounded-xl bg-white p-6 shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Student - Homework</h1>
+                  <p className="mt-2 text-gray-600">
+                    Class: {studentClass || "N/A"}
+                  </p>
+                </div>
 
-              <button
-                onClick={handleLogout}
-                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
-              >
-                Logout
-              </button>
+                <button
+                  onClick={handleLogout}
+                  className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
 
-            {works.length === 0 ? (
-              <p>No homework available for {studentClass || "your class"}</p>
+            {groupedSubjects.length === 0 ? (
+              <div className="rounded-xl bg-white p-6 shadow">
+                <p className="text-gray-500">
+                  No homework available for {studentClass || "your class"}
+                </p>
+              </div>
             ) : (
-              Object.keys(groupedWorks).map((subject) => (
-                <div key={subject} className="mb-8">
+              groupedSubjects.map((subject) => (
+                <div key={subject} className="rounded-xl bg-white p-6 shadow">
                   <h2 className="mb-4 text-2xl font-bold text-blue-600">
                     {subject}
                   </h2>
 
-                  {groupedWorks[subject].map((work) => (
-                    <div
-                      key={work.id}
-                      className="mb-4 rounded-xl bg-white p-5 shadow"
-                    >
-                      <div className="mb-3 flex justify-between">
-                        <div>
-                          <h3 className="text-2xl font-bold">{work.title}</h3>
-                          <p className="mt-1 text-sm text-gray-600">
-                            Class: {work.class_name || "N/A"} | Subject:{" "}
-                            {work.subject_name || "N/A"}
-                          </p>
-                        </div>
+                  <div className="space-y-5">
+                    {groupedWorks[subject].map((work) => {
+                      const existing = submissionMap[work.id];
 
-                        <span className="rounded bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700">
-                          {work.type}
-                        </span>
-                      </div>
+                      return (
+                        <div
+                          key={work.id}
+                          className="rounded-lg border p-5"
+                        >
+                          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <h3 className="text-xl font-bold">
+                                {work.title || "Homework"}
+                              </h3>
+                              <p className="mt-1 text-sm text-gray-600">
+                                Class: {work.class_name || "N/A"} | Subject:{" "}
+                                {work.subject_name || "N/A"}
+                              </p>
+                            </div>
 
-                      <p className="mb-4 text-gray-700">{work.question}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700">
+                                {work.type || "Homework"}
+                              </span>
 
-                      <textarea
-                        placeholder="Write your answer..."
-                        className="mb-4 w-full rounded-lg border p-3"
-                        rows={4}
-                        value={answers[work.id] || ""}
-                        onChange={(e) =>
-                          setAnswers((prev) => ({
-                            ...prev,
-                            [work.id]: e.target.value,
-                          }))
-                        }
-                      />
-
-                      <div className="mb-4 rounded-lg border bg-gray-50 p-4">
-                        <p className="mb-3 font-semibold">Upload Attachment</p>
-
-                        <div className="flex flex-wrap gap-3">
-                          <label className="cursor-pointer rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-                            Upload Photo
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) =>
-                                handleFileChange(
-                                  work.id,
-                                  e.target.files?.[0] || null
-                                )
-                              }
-                            />
-                          </label>
-
-                          <label className="cursor-pointer rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
-                            Upload PDF
-                            <input
-                              type="file"
-                              accept=".pdf,application/pdf"
-                              className="hidden"
-                              onChange={(e) =>
-                                handleFileChange(
-                                  work.id,
-                                  e.target.files?.[0] || null
-                                )
-                              }
-                            />
-                          </label>
-                        </div>
-
-                        {files[work.id] ? (
-                          <div className="mt-3 rounded border bg-white p-3 text-sm">
-                            <p className="font-medium text-gray-700">
-                              Selected file:
-                            </p>
-                            <p className="mt-1 text-gray-600">
-                              {files[work.id].name}
-                            </p>
+                              {existing ? (
+                                <span
+                                  className={`rounded px-3 py-1 text-sm font-semibold ${
+                                    String(existing.status || "").toLowerCase() === "checked"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-yellow-100 text-yellow-700"
+                                  }`}
+                                >
+                                  {existing.status || "Pending"}
+                                </span>
+                              ) : (
+                                <span className="rounded bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+                                  Not Submitted
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        ) : (
-                          <p className="mt-3 text-sm text-gray-500">
-                            No file selected
-                          </p>
-                        )}
-                      </div>
 
-                      <button
-                        onClick={() => handleSubmit(work)}
-                        disabled={loadingId === work.id}
-                        className="rounded bg-green-600 px-5 py-2 text-white hover:bg-green-700 disabled:opacity-60"
-                      >
-                        {loadingId === work.id ? "Uploading..." : "Submit Answer"}
-                      </button>
+                          <p className="mb-4 text-gray-700">{work.question}</p>
 
-                      {results[work.id] && (
-                        <div className="mt-4 rounded-lg border bg-gray-50 p-4">
-                          <p className="font-semibold">
-                            Score: {results[work.id].score}/10
-                          </p>
-                          <p className="mt-1 text-gray-700">
-                            Feedback: {results[work.id].feedback}
-                          </p>
+                          {existing?.answer_text ? (
+                            <div className="mb-4 rounded border bg-gray-50 p-3">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Last submitted text:
+                              </p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
+                                {existing.answer_text}
+                              </p>
+                            </div>
+                          ) : null}
 
-                          {results[work.id].file_url ? (
-                            <p className="mt-2 text-sm">
-                              Uploaded File:{" "}
+                          {existing?.file_url ? (
+                            <div className="mb-4 rounded border bg-gray-50 p-3">
+                              <p className="text-sm font-semibold text-gray-700">
+                                Last uploaded file:
+                              </p>
                               <a
-                                href={results[work.id].file_url}
+                                href={existing.file_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-blue-600 underline"
+                                className="mt-1 inline-block text-sm text-blue-600 underline"
                               >
-                                View File
+                                {existing.file_name || "View File"}
                               </a>
-                            </p>
+                            </div>
                           ) : null}
+
+                          <textarea
+                            placeholder="Write your answer..."
+                            className="mb-4 w-full rounded border p-3"
+                            rows={4}
+                            value={answers[work.id] || ""}
+                            onChange={(e) =>
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [work.id]: e.target.value,
+                              }))
+                            }
+                          />
+
+                          <div className="mb-4 rounded border bg-gray-50 p-4">
+                            <p className="mb-3 font-semibold">Upload Attachment</p>
+
+                            <div className="flex flex-wrap gap-3">
+                              <label className="cursor-pointer rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+                                Upload Photo
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) =>
+                                    handleFileChange(
+                                      work.id,
+                                      e.target.files?.[0] || null
+                                    )
+                                  }
+                                />
+                              </label>
+
+                              <label className="cursor-pointer rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
+                                Upload PDF
+                                <input
+                                  type="file"
+                                  accept=".pdf,application/pdf"
+                                  className="hidden"
+                                  onChange={(e) =>
+                                    handleFileChange(
+                                      work.id,
+                                      e.target.files?.[0] || null
+                                    )
+                                  }
+                                />
+                              </label>
+                            </div>
+
+                            {files[work.id] ? (
+                              <div className="mt-3 rounded border bg-white p-3 text-sm">
+                                <p className="font-medium text-gray-700">
+                                  Selected file:
+                                </p>
+                                <p className="mt-1 text-gray-600">
+                                  {files[work.id].name}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-sm text-gray-500">
+                                No new file selected
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => handleSubmit(work)}
+                            disabled={loadingId === work.id}
+                            className="rounded bg-green-600 px-5 py-2 text-white hover:bg-green-700 disabled:opacity-60"
+                          >
+                            {loadingId === work.id
+                              ? "Submitting..."
+                              : existing
+                              ? "Resubmit Homework"
+                              : "Submit Homework"}
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
               ))
             )}
 
             {message ? (
-              <p className="mt-4 text-center text-gray-600">{message}</p>
+              <div className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow">
+                {message}
+              </div>
             ) : null}
           </div>
         </div>

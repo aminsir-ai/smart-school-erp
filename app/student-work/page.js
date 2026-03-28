@@ -156,7 +156,7 @@ export default function StudentWorkPage() {
       class_name: studentClass,
       subject_name: work.subject_name || "",
       work_title: work.title || "",
-      answer_text: answerText,
+      answer: answerText,
       file_url: fileUrl,
       file_name: fileName,
       status: "Pending",
@@ -212,7 +212,11 @@ export default function StudentWorkPage() {
       [work.id]: null,
     }));
 
-    setMessage(existingSubmission ? "Homework resubmitted successfully" : "Homework submitted successfully");
+    setMessage(
+      existingSubmission
+        ? "Homework resubmitted successfully"
+        : "Homework submitted successfully"
+    );
     setLoadingId("");
   };
 
@@ -221,7 +225,10 @@ export default function StudentWorkPage() {
     window.location.href = "/login";
   };
 
-  const groupedSubjects = useMemo(() => Object.keys(groupedWorks), [groupedWorks]);
+  const groupedSubjects = useMemo(
+    () => Object.keys(groupedWorks),
+    [groupedWorks]
+  );
 
   if (!isAllowed) {
     return (
@@ -276,10 +283,7 @@ export default function StudentWorkPage() {
                       const existing = submissionMap[work.id];
 
                       return (
-                        <div
-                          key={work.id}
-                          className="rounded-lg border p-5"
-                        >
+                        <div key={work.id} className="rounded-lg border p-5">
                           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <h3 className="text-xl font-bold">
@@ -299,7 +303,8 @@ export default function StudentWorkPage() {
                               {existing ? (
                                 <span
                                   className={`rounded px-3 py-1 text-sm font-semibold ${
-                                    String(existing.status || "").toLowerCase() === "checked"
+                                    String(existing.status || "").toLowerCase() ===
+                                    "checked"
                                       ? "bg-green-100 text-green-700"
                                       : "bg-yellow-100 text-yellow-700"
                                   }`}
@@ -316,13 +321,13 @@ export default function StudentWorkPage() {
 
                           <p className="mb-4 text-gray-700">{work.question}</p>
 
-                          {existing?.answer_text ? (
+                          {existing?.answer ? (
                             <div className="mb-4 rounded border bg-gray-50 p-3">
                               <p className="text-sm font-semibold text-gray-700">
                                 Last submitted text:
                               </p>
                               <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
-                                {existing.answer_text}
+                                {existing.answer}
                               </p>
                             </div>
                           ) : null}

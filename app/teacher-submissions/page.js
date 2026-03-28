@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import { supabase } from "@/lib/supabase";
 
 export default function TeacherSubmissionsPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
   const [isAllowed, setIsAllowed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
 
   const [submissions, setSubmissions] = useState([]);
-  const [worksMap, setWorksMap] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [pageMessage, setPageMessage] = useState("");
 
-  const [classFilter, setClassFilter] = useState("all");
-  const [subjectFilter, setSubjectFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchText, setSearchText] = useState("");
+  const [updatingId, setUpdatingId] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+
+  const [classFilter, setClassFilter] = useState("All");
+  const [subjectFilter, setSubjectFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const [feedbackInputs, setFeedbackInputs] = useState({});
+  const [scoreInputs, setScoreInputs] = useState({});
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -43,364 +47,665 @@ export default function TeacherSubmissionsPage() {
       return;
     }
 
-    setTeacherName(user?.name || "Teacher");
+    setTeacherName(user.name || "Teacher");
     setIsAllowed(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
-    fetchSubmissionsData();
+    if (isAllowed) {
+      fetchSubmissions();
+    }
   }, [isAllowed]);
 
-  const fetchSubmissionsData = async () => {
+  async function fetchSubmissions() {
     setLoading(true);
-    setMessage("");
+    setPageMessage("");
 
     try {
-      const { data: worksData, error: worksError } = await supabase
-        .from("works")
-        .select("id, title, subject_name, class_name")
-        .order("created_at", { ascending: false });
-
-      if (worksError) {
-        console.log("WORKS FETCH ERROR:", worksError);
-        setMessage("Failed to load works");
-        setLoading(false);
-        return;
-      }
-
-      const workLookup = {};
-      (worksData || []).forEach((work) => {
-        workLookup[work.id] = work;
-      });
-      setWorksMap(workLookup);
-
-      const { data: submissionsData, error: submissionsError } = await supabase
+      const { data, error } = await supabase
         .from("submissions")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("submitted_at", { ascending: false });
 
-      if (submissionsError) {
-        console.log("SUBMISSIONS FETCH ERROR:", submissionsError);
-        setMessage("Failed to load submissions");
-        setLoading(false);
-        return;
+      if (error) {
+        console.log("FETCH SUBMISSIONS ERROR:", error);
+        setSubmissions([]);
+        setPageMessage("Failed to load submissions.");
+      } else {
+        const rows = Array.isArray(data) ? data : [];
+        setSubmissions(rows);
+
+        const feedbackMap = {};
+        const scoreMap = {};
+
+        rows.forEach((item) => {
+          feedbackMap[item.id] = item.feedback || "";
+          scoreMap[item.id] =
+            item.score === null || item.score === undefined ? "" : String(item.score);
+        });
+
+        setFeedbackInputs(feedbackMap);
+        setScoreInputs(scoreMap);
       }
-
-      const enriched = (submissionsData || []).map((item) => {
-        const matchedWork = workLookup[item.work_id] || {};
-
-        return {
-          ...item,
-          work_title: item.work_title || matchedWork.title || "Untitled Work",
-          subject_name:
-            item.subject_name || matchedWork.subject_name || "Unknown Subject",
-          class_name:
-            item.class_name || matchedWork.class_name || "Unknown Class",
-          status: item.status || "Pending",
-        };
-      });
-
-      setSubmissions(enriched);
     } catch (error) {
-      console.log("FETCH SUBMISSIONS DATA ERROR:", error);
-      setMessage("Something went wrong while loading submissions");
+      console.log("UNEXPECTED FETCH ERROR:", error);
+      setSubmissions([]);
+      setPageMessage("Something went wrong while loading submissions.");
     }
 
     setLoading(false);
-  };
+  }
 
-  const handleUpdateStatus = async (submissionId, newStatus) => {
-    setMessage("");
+  async function updateSubmissionStatus(id, newStatus) {
+    try {
+      setUpdatingId(id);
+      setPageMessage("");
 
-    const { error } = await supabase
-      .from("submissions")
-      .update({ status: newStatus })
-      .eq("id", submissionId);
+      const { error } = await supabase
+        .from("submissions")
+        .update({ status: newStatus })
+        .eq("id", id);
 
-    if (error) {
-      console.log("STATUS UPDATE ERROR:", error);
-      setMessage(`Failed to update status: ${error.message}`);
-      return;
+      if (error) {
+        console.log("UPDATE STATUS ERROR:", error);
+        setPageMessage("Failed to update status.");
+        return;
+      }
+
+      setSubmissions((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: newStatus } : item
+        )
+      );
+
+      setPageMessage(`Submission marked as ${newStatus}.`);
+    } catch (error) {
+      console.log("UNEXPECTED STATUS UPDATE ERROR:", error);
+      setPageMessage("Something went wrong while updating status.");
+    } finally {
+      setUpdatingId(null);
     }
+  }
 
-    setSubmissions((prev) =>
-      prev.map((item) =>
-        item.id === submissionId ? { ...item, status: newStatus } : item
-      )
-    );
+  async function saveFeedbackAndScore(id) {
+    try {
+      setSavingId(id);
+      setPageMessage("");
 
-    setMessage("Submission status updated successfully");
-  };
+      const feedbackValue = (feedbackInputs[id] || "").trim();
+      const rawScore = scoreInputs[id];
+
+      let scoreValue = null;
+
+      if (rawScore !== "" && rawScore !== null && rawScore !== undefined) {
+        const parsedScore = Number(rawScore);
+
+        if (Number.isNaN(parsedScore)) {
+          setPageMessage("Score must be a valid number.");
+          setSavingId(null);
+          return;
+        }
+
+        if (parsedScore < 0) {
+          setPageMessage("Score cannot be less than 0.");
+          setSavingId(null);
+          return;
+        }
+
+        scoreValue = parsedScore;
+      }
+
+      const { error } = await supabase
+        .from("submissions")
+        .update({
+          feedback: feedbackValue || null,
+          score: scoreValue,
+        })
+        .eq("id", id);
+
+      if (error) {
+        console.log("SAVE FEEDBACK ERROR:", error);
+        setPageMessage("Failed to save feedback and score.");
+        return;
+      }
+
+      setSubmissions((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                feedback: feedbackValue || null,
+                score: scoreValue,
+              }
+            : item
+        )
+      );
+
+      setPageMessage("Feedback and score saved successfully.");
+    } catch (error) {
+      console.log("UNEXPECTED SAVE FEEDBACK ERROR:", error);
+      setPageMessage("Something went wrong while saving feedback.");
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   const classOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        submissions
-          .map((item) => String(item.class_name || "").trim())
-          .filter(Boolean)
-      )
-    ).sort();
+    const list = submissions
+      .map((item) => item.class_name)
+      .filter(Boolean)
+      .map((item) => String(item).trim());
+
+    return ["All", ...Array.from(new Set(list))];
   }, [submissions]);
 
   const subjectOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        submissions
-          .map((item) => String(item.subject_name || "").trim())
-          .filter(Boolean)
-      )
-    ).sort();
+    const list = submissions
+      .map((item) => item.subject_name)
+      .filter(Boolean)
+      .map((item) => String(item).trim());
+
+    return ["All", ...Array.from(new Set(list))];
   }, [submissions]);
+
+  const statusOptions = ["All", "Pending", "Checked"];
 
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((item) => {
-      const matchClass =
-        classFilter === "all" ? true : item.class_name === classFilter;
+      const currentStatus = item.status || "Pending";
 
-      const matchSubject =
-        subjectFilter === "all" ? true : item.subject_name === subjectFilter;
+      const classMatch =
+        classFilter === "All" || item.class_name === classFilter;
 
-      const matchStatus =
-        statusFilter === "all"
-          ? true
-          : String(item.status || "").toLowerCase() ===
-            statusFilter.toLowerCase();
+      const subjectMatch =
+        subjectFilter === "All" || item.subject_name === subjectFilter;
 
-      const text = `${item.student_name || ""} ${item.work_title || ""} ${item.subject_name || ""} ${item.class_name || ""} ${item.answer_text || ""}`.toLowerCase();
+      const statusMatch =
+        statusFilter === "All" || currentStatus === statusFilter;
 
-      const matchSearch = searchText.trim()
-        ? text.includes(searchText.trim().toLowerCase())
-        : true;
-
-      return matchClass && matchSubject && matchStatus && matchSearch;
+      return classMatch && subjectMatch && statusMatch;
     });
-  }, [submissions, classFilter, subjectFilter, statusFilter, searchText]);
+  }, [submissions, classFilter, subjectFilter, statusFilter]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("erp_user");
-    window.location.href = "/login";
-  };
+  function formatDate(dateValue) {
+    if (!dateValue) return "-";
 
-  const formatDate = (value) => {
-    if (!value) return "-";
-    try {
-      return new Date(value).toLocaleDateString();
-    } catch {
-      return value;
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function getAnswerText(item) {
+    if (item?.answer_text && String(item.answer_text).trim() !== "") {
+      return item.answer_text;
     }
-  };
+
+    if (item?.answer && String(item.answer).trim() !== "") {
+      return item.answer;
+    }
+
+    return "-";
+  }
+
+  function getStatusStyle(status) {
+    if (status === "Checked") {
+      return {
+        backgroundColor: "#dcfce7",
+        color: "#166534",
+        border: "1px solid #86efac",
+      };
+    }
+
+    return {
+      backgroundColor: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
+    };
+  }
 
   if (!isAllowed) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p className="text-lg text-gray-600">Checking access...</p>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <>
-      <Header name={teacherName} />
+    <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
+      <Header />
+      <div style={{ display: "flex" }}>
+        <Sidebar />
 
-      <div className="flex min-h-screen bg-gray-100">
-        <Sidebar role="teacher" />
-
-        <div className="flex-1 p-6">
-          <div className="mx-auto max-w-7xl space-y-6">
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold">Teacher - Submissions</h1>
-                  <p className="mt-2 text-gray-600">
-                    View student homework submissions and update their status
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleLogout}
-                  className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-600"
+        <main
+          style={{
+            flex: 1,
+            padding: "20px",
+            marginLeft: "250px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "16px",
+              padding: "20px",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+                marginBottom: "20px",
+              }}
+            >
+              <div>
+                <h1
+                  style={{
+                    margin: 0,
+                    fontSize: "26px",
+                    fontWeight: "700",
+                    color: "#111827",
+                  }}
                 >
-                  Logout
-                </button>
+                  Teacher Submissions
+                </h1>
+                <p
+                  style={{
+                    marginTop: "8px",
+                    marginBottom: 0,
+                    color: "#6b7280",
+                    fontSize: "14px",
+                  }}
+                >
+                  Welcome, {teacherName}. Review submissions, add remarks, and
+                  update status.
+                </p>
               </div>
+
+              <button
+                onClick={fetchSubmissions}
+                style={{
+                  backgroundColor: "#2563eb",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "10px 16px",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Refresh
+              </button>
             </div>
 
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <input
-                  type="text"
-                  placeholder="Search by student, title, answer..."
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  className="rounded border p-3"
-                />
-
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "12px",
+                marginBottom: "20px",
+              }}
+            >
+              <div>
+                <label style={labelStyle}>Class Filter</label>
                 <select
                   value={classFilter}
                   onChange={(e) => setClassFilter(e.target.value)}
-                  className="rounded border p-3"
+                  style={selectStyle}
                 >
-                  <option value="all">All Classes</option>
                   {classOptions.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
                 </select>
+              </div>
 
+              <div>
+                <label style={labelStyle}>Subject Filter</label>
                 <select
                   value={subjectFilter}
                   onChange={(e) => setSubjectFilter(e.target.value)}
-                  className="rounded border p-3"
+                  style={selectStyle}
                 >
-                  <option value="all">All Subjects</option>
                   {subjectOptions.map((item) => (
                     <option key={item} value={item}>
                       {item}
                     </option>
                   ))}
                 </select>
+              </div>
 
+              <div>
+                <label style={labelStyle}>Status Filter</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="rounded border p-3"
+                  style={selectStyle}
                 >
-                  <option value="all">All Status</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Checked">Checked</option>
+                  {statusOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
                 </select>
-
-                <button
-                  onClick={fetchSubmissionsData}
-                  className="rounded bg-blue-600 px-4 py-3 text-white hover:bg-blue-700"
-                >
-                  Refresh
-                </button>
               </div>
-
-              {message ? (
-                <p className="mt-4 text-sm text-gray-700">{message}</p>
-              ) : null}
             </div>
 
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Submission List</h2>
-                <p className="text-sm text-gray-500">
-                  Total: {filteredSubmissions.length}
-                </p>
+            {pageMessage ? (
+              <div
+                style={{
+                  marginBottom: "16px",
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  backgroundColor: "#eff6ff",
+                  color: "#1d4ed8",
+                  border: "1px solid #bfdbfe",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                }}
+              >
+                {pageMessage}
               </div>
+            ) : null}
 
-              {loading ? (
-                <p className="text-gray-500">Loading submissions...</p>
-              ) : filteredSubmissions.length === 0 ? (
-                <p className="text-gray-500">No submissions found</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border border-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Student
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Class
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Work Title
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Subject
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Answer
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Submitted
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Status
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Action
-                        </th>
-                      </tr>
-                    </thead>
+            <div
+              style={{
+                marginBottom: "14px",
+                fontSize: "14px",
+                color: "#4b5563",
+                fontWeight: "600",
+              }}
+            >
+              Total Submissions: {filteredSubmissions.length}
+            </div>
 
-                    <tbody>
-                      {filteredSubmissions.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="border-b px-4 py-3 text-sm text-gray-900">
-                            {item.student_name || "-"}
-                          </td>
+            {loading ? (
+              <div
+                style={{
+                  padding: "30px 0",
+                  textAlign: "center",
+                  color: "#6b7280",
+                  fontSize: "15px",
+                }}
+              >
+                Loading submissions...
+              </div>
+            ) : filteredSubmissions.length === 0 ? (
+              <div
+                style={{
+                  padding: "30px 0",
+                  textAlign: "center",
+                  color: "#6b7280",
+                  fontSize: "15px",
+                }}
+              >
+                No submissions found.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    minWidth: "1600px",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ backgroundColor: "#f3f4f6" }}>
+                      <th style={thStyle}>Student Name</th>
+                      <th style={thStyle}>Class</th>
+                      <th style={thStyle}>Work Title</th>
+                      <th style={thStyle}>Subject</th>
+                      <th style={thStyle}>Answer</th>
+                      <th style={thStyle}>File</th>
+                      <th style={thStyle}>Submitted Date</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Teacher Feedback</th>
+                      <th style={thStyle}>Score</th>
+                      <th style={thStyle}>Actions</th>
+                    </tr>
+                  </thead>
 
-                          <td className="border-b px-4 py-3 text-sm text-gray-700">
-                            {item.class_name || "-"}
-                          </td>
+                  <tbody>
+                    {filteredSubmissions.map((item) => {
+                      const currentStatus = item.status || "Pending";
+                      const isSaving = savingId === item.id;
+                      const isUpdating = updatingId === item.id;
 
-                          <td className="border-b px-4 py-3 text-sm text-gray-700">
-                            {item.work_title || "-"}
-                          </td>
+                      return (
+                        <tr
+                          key={item.id}
+                          style={{
+                            borderBottom: "1px solid #e5e7eb",
+                          }}
+                        >
+                          <td style={tdStyle}>{item.student_name || "-"}</td>
+                          <td style={tdStyle}>{item.class_name || "-"}</td>
+                          <td style={tdStyle}>{item.work_title || "-"}</td>
+                          <td style={tdStyle}>{item.subject_name || "-"}</td>
 
-                          <td className="border-b px-4 py-3 text-sm text-gray-700">
-                            {item.subject_name || "-"}
-                          </td>
-
-                          <td className="border-b px-4 py-3 text-sm text-gray-700">
-                            <div className="max-w-xs whitespace-pre-wrap break-words">
-                              {item.answer_text || "-"}
+                          <td style={tdStyle}>
+                            <div
+                              style={{
+                                maxWidth: "260px",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                color: "#374151",
+                              }}
+                            >
+                              {getAnswerText(item)}
                             </div>
                           </td>
 
-                          <td className="border-b px-4 py-3 text-sm text-gray-700">
-                            {formatDate(item.created_at)}
+                          <td style={tdStyle}>
+                            {item.file_url ? (
+                              <a
+                                href={item.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: "#2563eb",
+                                  textDecoration: "none",
+                                  fontWeight: "600",
+                                }}
+                              >
+                                {item.file_name || "View File"}
+                              </a>
+                            ) : (
+                              "-"
+                            )}
                           </td>
 
-                          <td className="border-b px-4 py-3 text-center text-sm font-semibold">
+                          <td style={tdStyle}>{formatDate(item.submitted_at)}</td>
+
+                          <td style={tdStyle}>
                             <span
-                              className={
-                                String(item.status).toLowerCase() === "checked"
-                                  ? "text-green-600"
-                                  : "text-orange-500"
-                              }
+                              style={{
+                                display: "inline-block",
+                                padding: "6px 10px",
+                                borderRadius: "999px",
+                                fontSize: "12px",
+                                fontWeight: "700",
+                                ...getStatusStyle(currentStatus),
+                              }}
                             >
-                              {item.status}
+                              {currentStatus}
                             </span>
                           </td>
 
-                          <td className="border-b px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                          <td style={tdStyle}>
+                            <textarea
+                              value={feedbackInputs[item.id] || ""}
+                              onChange={(e) =>
+                                setFeedbackInputs((prev) => ({
+                                  ...prev,
+                                  [item.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Write teacher remark..."
+                              style={{
+                                width: "240px",
+                                minHeight: "90px",
+                                resize: "vertical",
+                                padding: "10px 12px",
+                                borderRadius: "10px",
+                                border: "1px solid #d1d5db",
+                                fontSize: "14px",
+                                outline: "none",
+                                backgroundColor: "#ffffff",
+                              }}
+                            />
+                          </td>
+
+                          <td style={tdStyle}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={scoreInputs[item.id] || ""}
+                              onChange={(e) =>
+                                setScoreInputs((prev) => ({
+                                  ...prev,
+                                  [item.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Score"
+                              style={{
+                                width: "90px",
+                                padding: "10px 12px",
+                                borderRadius: "10px",
+                                border: "1px solid #d1d5db",
+                                fontSize: "14px",
+                                outline: "none",
+                                backgroundColor: "#ffffff",
+                              }}
+                            />
+                          </td>
+
+                          <td style={tdStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "8px",
+                                minWidth: "170px",
+                              }}
+                            >
                               <button
-                                onClick={() =>
-                                  handleUpdateStatus(item.id, "Pending")
-                                }
-                                className="rounded bg-yellow-500 px-3 py-2 text-sm text-white hover:bg-yellow-600"
+                                onClick={() => saveFeedbackAndScore(item.id)}
+                                disabled={isSaving}
+                                style={{
+                                  backgroundColor: "#2563eb",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "8px",
+                                  padding: "8px 10px",
+                                  fontSize: "13px",
+                                  fontWeight: "600",
+                                  cursor: isSaving ? "not-allowed" : "pointer",
+                                  opacity: isSaving ? 0.6 : 1,
+                                }}
                               >
-                                Pending
+                                💾 Save Feedback
                               </button>
 
                               <button
                                 onClick={() =>
-                                  handleUpdateStatus(item.id, "Checked")
+                                  updateSubmissionStatus(item.id, "Checked")
                                 }
-                                className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
+                                disabled={isUpdating}
+                                style={{
+                                  backgroundColor: "#16a34a",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "8px",
+                                  padding: "8px 10px",
+                                  fontSize: "13px",
+                                  fontWeight: "600",
+                                  cursor: isUpdating ? "not-allowed" : "pointer",
+                                  opacity: isUpdating ? 0.6 : 1,
+                                }}
                               >
-                                Checked
+                                ✅ Mark as Checked
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  updateSubmissionStatus(item.id, "Pending")
+                                }
+                                disabled={isUpdating}
+                                style={{
+                                  backgroundColor: "#f59e0b",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "8px",
+                                  padding: "8px 10px",
+                                  fontSize: "13px",
+                                  fontWeight: "600",
+                                  cursor: isUpdating ? "not-allowed" : "pointer",
+                                  opacity: isUpdating ? 0.6 : 1,
+                                }}
+                              >
+                                ⏳ Mark as Pending
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </div>
+        </main>
       </div>
-    </>
+    </div>
   );
 }
+
+const labelStyle = {
+  display: "block",
+  marginBottom: "6px",
+  fontSize: "13px",
+  fontWeight: "600",
+  color: "#374151",
+};
+
+const selectStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: "1px solid #d1d5db",
+  fontSize: "14px",
+  outline: "none",
+  backgroundColor: "#ffffff",
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: "14px 12px",
+  fontSize: "13px",
+  fontWeight: "700",
+  color: "#374151",
+  borderBottom: "1px solid #d1d5db",
+  whiteSpace: "nowrap",
+  verticalAlign: "top",
+};
+
+const tdStyle = {
+  padding: "14px 12px",
+  fontSize: "14px",
+  color: "#111827",
+  verticalAlign: "top",
+};

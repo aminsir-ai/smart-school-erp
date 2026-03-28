@@ -1,9 +1,59 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function Sidebar({ role = "student" }) {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [teacherName, setTeacherName] = useState("");
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("erp_user");
+
+    if (!storedUser) return;
+
+    try {
+      const user = JSON.parse(storedUser);
+      setTeacherName(user?.name || "");
+    } catch (error) {
+      console.log("SIDEBAR USER PARSE ERROR:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (role !== "teacher" || !teacherName) return;
+
+    fetchUnreadCount();
+
+    const interval = setInterval(() => {
+      fetchUnreadCount();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [role, teacherName]);
+
+  async function fetchUnreadCount() {
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id")
+        .or(`teacher_name.eq.${teacherName},teacher_name.is.null`)
+        .eq("is_read", false);
+
+      if (error) {
+        console.log("FETCH UNREAD COUNT ERROR:", error);
+        setUnreadCount(0);
+        return;
+      }
+
+      setUnreadCount(Array.isArray(data) ? data.length : 0);
+    } catch (error) {
+      console.log("UNREAD COUNT FETCH FAILED:", error);
+      setUnreadCount(0);
+    }
+  }
 
   const studentMenu = [
     { label: "Dashboard", path: "/student-dashboard" },
@@ -17,6 +67,7 @@ export default function Sidebar({ role = "student" }) {
     { label: "Create Work", path: "/teacher-create-work" },
     { label: "All Works", path: "/teacher-work-list" },
     { label: "Submissions", path: "/teacher-submissions" },
+    { label: "Notifications", path: "/teacher-notifications" },
     { label: "Profile", path: "/teacher-profile" },
   ];
 
@@ -40,6 +91,10 @@ export default function Sidebar({ role = "student" }) {
       <ul className="space-y-3">
         {menu.map((item) => {
           const isActive = pathname === item.path;
+          const showBadge =
+            role === "teacher" &&
+            item.path === "/teacher-notifications" &&
+            unreadCount > 0;
 
           return (
             <li
@@ -51,7 +106,15 @@ export default function Sidebar({ role = "student" }) {
                   : "hover:bg-gray-700"
               }`}
             >
-              {item.label}
+              <div className="flex items-center justify-between">
+                <span>{item.label}</span>
+
+                {showBadge ? (
+                  <span className="min-w-[24px] rounded-full bg-red-500 px-2 py-0.5 text-center text-xs font-bold text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </div>
             </li>
           );
         })}

@@ -11,8 +11,10 @@ export default function StudentWorkDetailPage() {
   const workId = params?.id;
 
   const [studentName, setStudentName] = useState("Student");
+  const [studentClass, setStudentClass] = useState("");
   const [work, setWork] = useState(null);
   const [answerText, setAnswerText] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -41,6 +43,7 @@ export default function StudentWorkDetailPage() {
     }
 
     setStudentName(user.name || "Student");
+    setStudentClass(user.class_name || user.class || "");
   }, []);
 
   useEffect(() => {
@@ -84,17 +87,55 @@ export default function StudentWorkDetailPage() {
     return "Homework";
   }
 
+  async function uploadAttachment(file) {
+    if (!file) {
+      return { fileUrl: null, fileName: null };
+    }
+
+    const safeFileName = `${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
+    const filePath = `student-submissions/${workId}/${safeFileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("homework-files")
+      .upload(filePath, file, {
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.log("FILE UPLOAD ERROR:", uploadError);
+      throw new Error("File upload failed");
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("homework-files")
+      .getPublicUrl(filePath);
+
+    return {
+      fileUrl: publicUrlData?.publicUrl || null,
+      fileName: file.name || null,
+    };
+  }
+
   async function handleSubmit() {
     if (!work) return;
 
-    if (!answerText.trim()) {
-      alert("Please write your answer before submitting.");
+    if (!answerText.trim() && !selectedFile) {
+      alert("Please write your answer or upload a file before submitting.");
       return;
     }
 
     setSubmitting(true);
 
     try {
+      let fileUrl = null;
+      let fileName = null;
+
+      if (selectedFile) {
+        const uploaded = await uploadAttachment(selectedFile);
+        fileUrl = uploaded.fileUrl;
+        fileName = uploaded.fileName;
+      }
+
       const response = await fetch("/api/submit-homework", {
         method: "POST",
         headers: {
@@ -104,7 +145,7 @@ export default function StudentWorkDetailPage() {
           workId: work.id,
           teacherName: work.teacher_name || "",
           studentName,
-          className: work.class_name,
+          className: work.class_name || studentClass,
           subjectName: work.subject_name,
           workTitle: work.title,
           studentAnswer: answerText,
@@ -113,6 +154,8 @@ export default function StudentWorkDetailPage() {
             work.answer ||
             work.model_answer ||
             "",
+          fileUrl,
+          fileName,
         }),
       });
 
@@ -222,6 +265,31 @@ export default function StudentWorkDetailPage() {
                 rows={8}
                 placeholder={`Write your ${typeLabel.toLowerCase()} answer...`}
               />
+
+              <div className="mt-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Upload Attachment
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setSelectedFile(file);
+                  }}
+                  className="block w-full rounded border bg-white p-2 text-sm"
+                />
+
+                {selectedFile ? (
+                  <p className="mt-2 text-sm text-green-600">
+                    Selected file: {selectedFile.name}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-gray-500">
+                    No file selected
+                  </p>
+                )}
+              </div>
 
               <div className="mt-4 flex gap-3">
                 <button

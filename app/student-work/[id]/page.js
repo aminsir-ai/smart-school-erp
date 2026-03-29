@@ -93,6 +93,8 @@ export default function StudentWorkDetailPage() {
 
           if (submissionData?.answer_text) {
             setAnswerText(submissionData.answer_text);
+          } else {
+            setAnswerText("");
           }
         }
       }
@@ -118,7 +120,12 @@ export default function StudentWorkDetailPage() {
   }
 
   function getStatusLabel() {
-    return submission?.status || "Pending";
+    const status = String(submission?.status || "").toLowerCase();
+
+    if (status === "checked") return "Checked";
+    if (status === "submitted") return "Submitted";
+
+    return submission ? "Submitted" : "Pending";
   }
 
   function getStatusBadgeClass(status) {
@@ -292,7 +299,8 @@ export default function StudentWorkDetailPage() {
                     {work.title || typeLabel}
                   </h1>
                   <p className="mt-2 text-sm text-gray-500">
-                    Class: {work.class_name || "-"} | Subject: {work.subject_name || "-"}
+                    Class: {work.class_name || "-"} | Subject:{" "}
+                    {work.subject_name || "-"}
                   </p>
                 </div>
 

@@ -118,6 +118,41 @@ export default function TeacherNotificationsPage() {
     }
   }
 
+  async function openSubmissionFromNotification(item) {
+    try {
+      if (!item?.id) return;
+
+      if (!item.is_read) {
+        const { error } = await supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("id", item.id);
+
+        if (!error) {
+          setNotifications((prev) =>
+            prev.map((row) =>
+              row.id === item.id ? { ...row, is_read: true } : row
+            )
+          );
+        }
+      }
+
+      const params = new URLSearchParams();
+
+      if (item.work_id) {
+        params.set("workId", item.work_id);
+      }
+
+      if (item.student_name) {
+        params.set("studentName", item.student_name);
+      }
+
+      window.location.href = `/teacher-submissions?${params.toString()}`;
+    } catch (error) {
+      console.log("OPEN SUBMISSION FROM NOTIFICATION ERROR:", error);
+    }
+  }
+
   const unreadCount = useMemo(() => {
     return notifications.filter((item) => !item.is_read).length;
   }, [notifications]);
@@ -270,6 +305,7 @@ export default function TeacherNotificationsPage() {
                 {notifications.map((item) => (
                   <div
                     key={item.id}
+                    onClick={() => openSubmissionFromNotification(item)}
                     style={{
                       border: item.is_read
                         ? "1px solid #e5e7eb"
@@ -277,6 +313,8 @@ export default function TeacherNotificationsPage() {
                       backgroundColor: item.is_read ? "#ffffff" : "#eff6ff",
                       borderRadius: "12px",
                       padding: "16px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
                     }}
                   >
                     <div
@@ -288,7 +326,7 @@ export default function TeacherNotificationsPage() {
                         flexWrap: "wrap",
                       }}
                     >
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <p
                           style={{
                             margin: 0,
@@ -319,39 +357,53 @@ export default function TeacherNotificationsPage() {
                               ? new Date(item.created_at).toLocaleString("en-IN")
                               : "-"}
                           </span>
+                          <span
+                            style={{
+                              color: "#2563eb",
+                              fontWeight: "600",
+                              marginTop: "4px",
+                            }}
+                          >
+                            Click to open submission
+                          </span>
                         </div>
                       </div>
 
-                      {!item.is_read ? (
-                        <button
-                          onClick={() => markAsRead(item.id)}
-                          style={{
-                            backgroundColor: "#16a34a",
-                            color: "#ffffff",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "8px 12px",
-                            fontSize: "13px",
-                            fontWeight: "600",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Mark as Read
-                        </button>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: "700",
-                            color: "#166534",
-                            backgroundColor: "#dcfce7",
-                            padding: "6px 10px",
-                            borderRadius: "999px",
-                          }}
-                        >
-                          Read
-                        </span>
-                      )}
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: "flex", alignItems: "center" }}
+                      >
+                        {!item.is_read ? (
+                          <button
+                            onClick={() => markAsRead(item.id)}
+                            style={{
+                              backgroundColor: "#16a34a",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "8px 12px",
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Mark as Read
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: "700",
+                              color: "#166534",
+                              backgroundColor: "#dcfce7",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                            }}
+                          >
+                            Read
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

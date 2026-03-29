@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
 export default function TeacherSubmissionsPage() {
+  const searchParams = useSearchParams();
+  const highlightWorkId = searchParams.get("workId");
+  const highlightStudentName = searchParams.get("studentName");
+
   const [teacherName, setTeacherName] = useState("Teacher");
   const [isAllowed, setIsAllowed] = useState(false);
 
@@ -56,6 +61,25 @@ export default function TeacherSubmissionsPage() {
       fetchSubmissions();
     }
   }, [isAllowed]);
+
+  useEffect(() => {
+    if (!highlightWorkId) return;
+
+    const timer = setTimeout(() => {
+      const el = document.querySelector(
+        `[data-work-id="${highlightWorkId}"][data-student-name="${highlightStudentName || ""}"]`
+      );
+
+      if (el) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [highlightWorkId, highlightStudentName, submissions]);
 
   async function fetchSubmissions() {
     setLoading(true);
@@ -477,15 +501,25 @@ export default function TeacherSubmissionsPage() {
                   const isSaving = savingId === item.id;
                   const isUpdating = updatingId === item.id;
 
+                  const isHighlighted =
+                    highlightWorkId === item.work_id &&
+                    (!highlightStudentName ||
+                      highlightStudentName === item.student_name);
+
                   return (
                     <div
                       key={item.id}
+                      data-work-id={item.work_id || ""}
+                      data-student-name={item.student_name || ""}
                       style={{
-                        border: "1px solid #e5e7eb",
+                        border: isHighlighted
+                          ? "2px solid #2563eb"
+                          : "1px solid #e5e7eb",
                         borderRadius: "14px",
                         padding: "18px",
-                        backgroundColor: "#ffffff",
+                        backgroundColor: isHighlighted ? "#eff6ff" : "#ffffff",
                         boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                        scrollMarginTop: "100px",
                       }}
                     >
                       <div

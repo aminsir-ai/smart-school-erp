@@ -81,7 +81,9 @@ export default function TeacherSubmissionsPage() {
         rows.forEach((item) => {
           feedbackMap[item.id] = item.feedback || "";
           scoreMap[item.id] =
-            item.score === null || item.score === undefined ? "" : String(item.score);
+            item.score === null || item.score === undefined
+              ? ""
+              : String(item.score);
         });
 
         setFeedbackInputs(feedbackMap);
@@ -127,12 +129,12 @@ export default function TeacherSubmissionsPage() {
     }
   }
 
-  async function saveFeedbackAndScore(id) {
+  async function saveTeacherReview(id) {
     try {
       setSavingId(id);
       setPageMessage("");
 
-      const feedbackValue = (feedbackInputs[id] || "").trim();
+      const feedbackValue = String(feedbackInputs[id] || "").trim();
       const rawScore = scoreInputs[id];
 
       let scoreValue = null;
@@ -164,8 +166,8 @@ export default function TeacherSubmissionsPage() {
         .eq("id", id);
 
       if (error) {
-        console.log("SAVE FEEDBACK ERROR:", error);
-        setPageMessage("Failed to save feedback and score.");
+        console.log("SAVE TEACHER REVIEW ERROR:", error);
+        setPageMessage("Failed to save teacher review.");
         return;
       }
 
@@ -181,10 +183,10 @@ export default function TeacherSubmissionsPage() {
         )
       );
 
-      setPageMessage("Feedback and score saved successfully.");
+      setPageMessage("Teacher review saved successfully.");
     } catch (error) {
-      console.log("UNEXPECTED SAVE FEEDBACK ERROR:", error);
-      setPageMessage("Something went wrong while saving feedback.");
+      console.log("UNEXPECTED SAVE REVIEW ERROR:", error);
+      setPageMessage("Something went wrong while saving review.");
     } finally {
       setSavingId(null);
     }
@@ -271,15 +273,31 @@ export default function TeacherSubmissionsPage() {
     };
   }
 
+  function getAiReviewBoxStyle(item) {
+    const aiWorked = item.ai_checked_at || item.score !== null || item.feedback;
+
+    if (aiWorked) {
+      return {
+        backgroundColor: "#eff6ff",
+        border: "1px solid #bfdbfe",
+      };
+    }
+
+    return {
+      backgroundColor: "#f9fafb",
+      border: "1px solid #e5e7eb",
+    };
+  }
+
   if (!isAllowed) {
     return null;
   }
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
-      <Header />
+      <Header name={teacherName} />
       <div style={{ display: "flex" }}>
-        <Sidebar />
+        <Sidebar role="teacher" />
 
         <main
           style={{
@@ -316,7 +334,7 @@ export default function TeacherSubmissionsPage() {
                     color: "#111827",
                   }}
                 >
-                  Teacher Submissions
+                  Teacher Review
                 </h1>
                 <p
                   style={{
@@ -326,8 +344,8 @@ export default function TeacherSubmissionsPage() {
                     fontSize: "14px",
                   }}
                 >
-                  Welcome, {teacherName}. Review submissions, add remarks, and
-                  update status.
+                  Welcome, {teacherName}. Review AI results, edit feedback, and
+                  finalize student submissions.
                 </p>
               </div>
 
@@ -453,62 +471,126 @@ export default function TeacherSubmissionsPage() {
                 No submissions found.
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    minWidth: "1600px",
-                  }}
-                >
-                  <thead>
-                    <tr style={{ backgroundColor: "#f3f4f6" }}>
-                      <th style={thStyle}>Student Name</th>
-                      <th style={thStyle}>Class</th>
-                      <th style={thStyle}>Work Title</th>
-                      <th style={thStyle}>Subject</th>
-                      <th style={thStyle}>Answer</th>
-                      <th style={thStyle}>File</th>
-                      <th style={thStyle}>Submitted Date</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Teacher Feedback</th>
-                      <th style={thStyle}>Score</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
+              <div style={{ display: "grid", gap: "18px" }}>
+                {filteredSubmissions.map((item) => {
+                  const currentStatus = item.status || "Pending";
+                  const isSaving = savingId === item.id;
+                  const isUpdating = updatingId === item.id;
 
-                  <tbody>
-                    {filteredSubmissions.map((item) => {
-                      const currentStatus = item.status || "Pending";
-                      const isSaving = savingId === item.id;
-                      const isUpdating = updatingId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "14px",
+                        padding: "18px",
+                        backgroundColor: "#ffffff",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "start",
+                          gap: "12px",
+                          flexWrap: "wrap",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <div>
+                          <h3
+                            style={{
+                              margin: 0,
+                              fontSize: "20px",
+                              fontWeight: "700",
+                              color: "#111827",
+                            }}
+                          >
+                            {item.work_title || "Homework"}
+                          </h3>
 
-                      return (
-                        <tr
-                          key={item.id}
+                          <div
+                            style={{
+                              marginTop: "8px",
+                              display: "grid",
+                              gap: "4px",
+                              fontSize: "14px",
+                              color: "#4b5563",
+                            }}
+                          >
+                            <span>
+                              <strong>Student:</strong> {item.student_name || "-"}
+                            </span>
+                            <span>
+                              <strong>Class:</strong> {item.class_name || "-"}
+                            </span>
+                            <span>
+                              <strong>Subject:</strong> {item.subject_name || "-"}
+                            </span>
+                            <span>
+                              <strong>Submitted:</strong>{" "}
+                              {formatDate(item.submitted_at)}
+                            </span>
+                            <span>
+                              <strong>Attempt:</strong> {item.attempt_no || 1}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
                           style={{
-                            borderBottom: "1px solid #e5e7eb",
+                            display: "inline-block",
+                            padding: "7px 12px",
+                            borderRadius: "999px",
+                            fontSize: "12px",
+                            fontWeight: "700",
+                            ...getStatusStyle(currentStatus),
                           }}
                         >
-                          <td style={tdStyle}>{item.student_name || "-"}</td>
-                          <td style={tdStyle}>{item.class_name || "-"}</td>
-                          <td style={tdStyle}>{item.work_title || "-"}</td>
-                          <td style={tdStyle}>{item.subject_name || "-"}</td>
+                          {currentStatus}
+                        </span>
+                      </div>
 
-                          <td style={tdStyle}>
-                            <div
-                              style={{
-                                maxWidth: "260px",
-                                whiteSpace: "pre-wrap",
-                                wordBreak: "break-word",
-                                color: "#374151",
-                              }}
-                            >
-                              {getAnswerText(item)}
-                            </div>
-                          </td>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1.2fr 1fr",
+                          gap: "16px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "12px",
+                            padding: "14px",
+                            backgroundColor: "#fafafa",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: "700",
+                              color: "#111827",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            Student Submission
+                          </div>
 
-                          <td style={tdStyle}>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              color: "#374151",
+                              fontSize: "14px",
+                              lineHeight: "1.6",
+                            }}
+                          >
+                            {getAnswerText(item)}
+                          </div>
+
+                          <div style={{ marginTop: "12px" }}>
                             {item.file_url ? (
                               <a
                                 href={item.file_url}
@@ -518,153 +600,242 @@ export default function TeacherSubmissionsPage() {
                                   color: "#2563eb",
                                   textDecoration: "none",
                                   fontWeight: "600",
+                                  fontSize: "14px",
                                 }}
                               >
                                 {item.file_name || "View File"}
                               </a>
                             ) : (
-                              "-"
+                              <span style={{ color: "#6b7280", fontSize: "14px" }}>
+                                No file uploaded
+                              </span>
                             )}
-                          </td>
+                          </div>
+                        </div>
 
-                          <td style={tdStyle}>{formatDate(item.submitted_at)}</td>
+                        <div
+                          style={{
+                            ...getAiReviewBoxStyle(item),
+                            borderRadius: "12px",
+                            padding: "14px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: "700",
+                              color: "#111827",
+                              marginBottom: "10px",
+                            }}
+                          >
+                            AI Review
+                          </div>
 
-                          <td style={tdStyle}>
-                            <span
-                              style={{
-                                display: "inline-block",
-                                padding: "6px 10px",
-                                borderRadius: "999px",
-                                fontSize: "12px",
-                                fontWeight: "700",
-                                ...getStatusStyle(currentStatus),
-                              }}
-                            >
-                              {currentStatus}
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: "8px",
+                              fontSize: "14px",
+                              color: "#374151",
+                            }}
+                          >
+                            <span>
+                              <strong>AI Score:</strong>{" "}
+                              {item.score ?? "Not available"}
                             </span>
-                          </td>
+                            <span>
+                              <strong>AI Feedback:</strong>{" "}
+                              {item.feedback || "Not available"}
+                            </span>
+                            <span>
+                              <strong>Logic Match:</strong>{" "}
+                              {item.logic_match === true
+                                ? "Yes"
+                                : item.logic_match === false
+                                ? "No"
+                                : "Not available"}
+                            </span>
+                            <span>
+                              <strong>Grammar OK:</strong>{" "}
+                              {item.grammar_ok === true
+                                ? "Yes"
+                                : item.grammar_ok === false
+                                ? "No"
+                                : "Not available"}
+                            </span>
+                            <span>
+                              <strong>Wrong Count:</strong>{" "}
+                              {item.wrong_count ?? 0}
+                            </span>
+                            <span>
+                              <strong>AI Checked At:</strong>{" "}
+                              {formatDate(item.ai_checked_at)}
+                            </span>
 
-                          <td style={tdStyle}>
-                            <textarea
-                              value={feedbackInputs[item.id] || ""}
-                              onChange={(e) =>
-                                setFeedbackInputs((prev) => ({
-                                  ...prev,
-                                  [item.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Write teacher remark..."
-                              style={{
-                                width: "240px",
-                                minHeight: "90px",
-                                resize: "vertical",
-                                padding: "10px 12px",
-                                borderRadius: "10px",
-                                border: "1px solid #d1d5db",
-                                fontSize: "14px",
-                                outline: "none",
-                                backgroundColor: "#ffffff",
-                              }}
-                            />
-                          </td>
-
-                          <td style={tdStyle}>
-                            <input
-                              type="number"
-                              min="0"
-                              value={scoreInputs[item.id] || ""}
-                              onChange={(e) =>
-                                setScoreInputs((prev) => ({
-                                  ...prev,
-                                  [item.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Score"
-                              style={{
-                                width: "90px",
-                                padding: "10px 12px",
-                                borderRadius: "10px",
-                                border: "1px solid #d1d5db",
-                                fontSize: "14px",
-                                outline: "none",
-                                backgroundColor: "#ffffff",
-                              }}
-                            />
-                          </td>
-
-                          <td style={tdStyle}>
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "8px",
-                                minWidth: "170px",
-                              }}
-                            >
-                              <button
-                                onClick={() => saveFeedbackAndScore(item.id)}
-                                disabled={isSaving}
+                            {item.mistake_reason ? (
+                              <div
                                 style={{
-                                  backgroundColor: "#2563eb",
-                                  color: "#ffffff",
-                                  border: "none",
-                                  borderRadius: "8px",
-                                  padding: "8px 10px",
-                                  fontSize: "13px",
-                                  fontWeight: "600",
-                                  cursor: isSaving ? "not-allowed" : "pointer",
-                                  opacity: isSaving ? 0.6 : 1,
+                                  marginTop: "6px",
+                                  padding: "10px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#fef2f2",
+                                  color: "#b91c1c",
+                                  border: "1px solid #fecaca",
                                 }}
                               >
-                                💾 Save Feedback
-                              </button>
+                                <strong>Mistake Reason:</strong>{" "}
+                                {item.mistake_reason}
+                              </div>
+                            ) : null}
 
-                              <button
-                                onClick={() =>
-                                  updateSubmissionStatus(item.id, "Checked")
-                                }
-                                disabled={isUpdating}
+                            {item.corrected_answer ? (
+                              <div
                                 style={{
-                                  backgroundColor: "#16a34a",
-                                  color: "#ffffff",
-                                  border: "none",
-                                  borderRadius: "8px",
-                                  padding: "8px 10px",
-                                  fontSize: "13px",
-                                  fontWeight: "600",
-                                  cursor: isUpdating ? "not-allowed" : "pointer",
-                                  opacity: isUpdating ? 0.6 : 1,
+                                  marginTop: "6px",
+                                  padding: "10px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#eff6ff",
+                                  color: "#1d4ed8",
+                                  border: "1px solid #bfdbfe",
+                                  whiteSpace: "pre-wrap",
                                 }}
                               >
-                                ✅ Mark as Checked
-                              </button>
+                                <strong>Corrected Answer:</strong>{" "}
+                                {item.corrected_answer}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
 
-                              <button
-                                onClick={() =>
-                                  updateSubmissionStatus(item.id, "Pending")
-                                }
-                                disabled={isUpdating}
-                                style={{
-                                  backgroundColor: "#f59e0b",
-                                  color: "#ffffff",
-                                  border: "none",
-                                  borderRadius: "8px",
-                                  padding: "8px 10px",
-                                  fontSize: "13px",
-                                  fontWeight: "600",
-                                  cursor: isUpdating ? "not-allowed" : "pointer",
-                                  opacity: isUpdating ? 0.6 : 1,
-                                }}
-                              >
-                                ⏳ Mark as Pending
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 120px 220px",
+                          gap: "14px",
+                          marginTop: "18px",
+                          alignItems: "start",
+                        }}
+                      >
+                        <div>
+                          <label style={labelStyle}>Teacher Final Remark</label>
+                          <textarea
+                            value={feedbackInputs[item.id] || ""}
+                            onChange={(e) =>
+                              setFeedbackInputs((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Write teacher remark..."
+                            style={{
+                              width: "100%",
+                              minHeight: "100px",
+                              resize: "vertical",
+                              padding: "10px 12px",
+                              borderRadius: "10px",
+                              border: "1px solid #d1d5db",
+                              fontSize: "14px",
+                              outline: "none",
+                              backgroundColor: "#ffffff",
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>Final Score</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={scoreInputs[item.id] || ""}
+                            onChange={(e) =>
+                              setScoreInputs((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Score"
+                            style={{
+                              width: "100%",
+                              padding: "10px 12px",
+                              borderRadius: "10px",
+                              border: "1px solid #d1d5db",
+                              fontSize: "14px",
+                              outline: "none",
+                              backgroundColor: "#ffffff",
+                            }}
+                          />
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "8px",
+                          }}
+                        >
+                          <button
+                            onClick={() => saveTeacherReview(item.id)}
+                            disabled={isSaving}
+                            style={{
+                              backgroundColor: "#2563eb",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "10px 12px",
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              cursor: isSaving ? "not-allowed" : "pointer",
+                              opacity: isSaving ? 0.6 : 1,
+                            }}
+                          >
+                            💾 Save Review
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              updateSubmissionStatus(item.id, "Checked")
+                            }
+                            disabled={isUpdating}
+                            style={{
+                              backgroundColor: "#16a34a",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "10px 12px",
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              cursor: isUpdating ? "not-allowed" : "pointer",
+                              opacity: isUpdating ? 0.6 : 1,
+                            }}
+                          >
+                            ✅ Mark Checked
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              updateSubmissionStatus(item.id, "Pending")
+                            }
+                            disabled={isUpdating}
+                            style={{
+                              backgroundColor: "#f59e0b",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "8px",
+                              padding: "10px 12px",
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              cursor: isUpdating ? "not-allowed" : "pointer",
+                              opacity: isUpdating ? 0.6 : 1,
+                            }}
+                          >
+                            ⏳ Mark Pending
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -690,22 +861,4 @@ const selectStyle = {
   fontSize: "14px",
   outline: "none",
   backgroundColor: "#ffffff",
-};
-
-const thStyle = {
-  textAlign: "left",
-  padding: "14px 12px",
-  fontSize: "13px",
-  fontWeight: "700",
-  color: "#374151",
-  borderBottom: "1px solid #d1d5db",
-  whiteSpace: "nowrap",
-  verticalAlign: "top",
-};
-
-const tdStyle = {
-  padding: "14px 12px",
-  fontSize: "14px",
-  color: "#111827",
-  verticalAlign: "top",
 };

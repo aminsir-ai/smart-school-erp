@@ -12,10 +12,6 @@ export default function StudentDashboard() {
   const [submissionMap, setSubmissionMap] = useState({});
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const [selectedWork, setSelectedWork] = useState(null);
-  const [answerText, setAnswerText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
 
@@ -41,7 +37,7 @@ export default function StudentDashboard() {
     }
 
     setStudentName(user.name || "Student");
-    setClassName(user.class_name || "");
+    setClassName(user.class_name || user.class || "");
     setIsAllowed(true);
   }, []);
 
@@ -102,13 +98,20 @@ export default function StudentDashboard() {
   }
 
   function getWorkTypeLabel(work) {
-    const rawType = String(work?.type || "").trim().toLowerCase();
+    const rawType = String(work?.type || work?.work_type || "")
+      .trim()
+      .toLowerCase();
 
     if (rawType === "classwork" || rawType === "class work") {
       return "Class Work";
     }
 
     return "Homework";
+  }
+
+  function openWork(workId) {
+    if (!workId) return;
+    window.location.href = `/student-work/${workId}`;
   }
 
   const handleLogout = () => {
@@ -131,60 +134,6 @@ export default function StudentDashboard() {
   const classWorkCount = allWorks.filter(
     (work) => getWorkTypeLabel(work) === "Class Work"
   ).length;
-
-  async function handleSubmit() {
-    if (!selectedWork) return;
-
-    if (!answerText.trim()) {
-      alert("Please write your answer before submitting.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const response = await fetch("/api/submit-homework", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          workId: selectedWork.id,
-          teacherName: selectedWork.teacher_name || "",
-          studentName,
-          className: selectedWork.class_name,
-          subjectName: selectedWork.subject_name,
-          workTitle: selectedWork.title,
-          studentAnswer: answerText,
-          teacherAnswer:
-            selectedWork.answer_sheet ||
-            selectedWork.answer ||
-            selectedWork.model_answer ||
-            "",
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        alert(result.error || "Submission failed");
-        return;
-      }
-
-      alert(
-        result.summary?.student_message || "Work submitted successfully."
-      );
-
-      setAnswerText("");
-      setSelectedWork(null);
-      await fetchData();
-    } catch (error) {
-      console.log("SUBMIT WORK ERROR:", error);
-      alert("Submission failed");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   if (!isAllowed) return null;
 
@@ -262,6 +211,9 @@ export default function StudentDashboard() {
                       {groupedWorks[subject].map((work) => {
                         const submission = submissionMap[work.id];
                         const typeLabel = getWorkTypeLabel(work);
+                        const isChecked =
+                          String(submission?.status || "").toLowerCase() ===
+                          "checked";
 
                         return (
                           <div
@@ -275,7 +227,7 @@ export default function StudentDashboard() {
                                 </h4>
 
                                 <p className="text-sm text-gray-600">
-                                  {work.question}
+                                  {work.question || work.description || "-"}
                                 </p>
                               </div>
 
@@ -291,7 +243,7 @@ export default function StudentDashboard() {
                             </div>
 
                             {submission ? (
-                              <div className="mt-2 text-sm space-y-1">
+                              <div className="mt-2 space-y-1 text-sm">
                                 <p>
                                   <span className="font-medium">Status:</span>{" "}
                                   {submission.status || "-"}
@@ -318,30 +270,32 @@ export default function StudentDashboard() {
 
                                 {submission.corrected_answer ? (
                                   <p className="text-blue-600">
-                                    <span className="font-medium">Correct Answer:</span>{" "}
+                                    <span className="font-medium">
+                                      Correct Answer:
+                                    </span>{" "}
                                     {submission.corrected_answer}
                                   </p>
                                 ) : null}
 
-                                {String(submission.status || "").toLowerCase() !==
-                                "checked" ? (
+                                {!isChecked ? (
                                   <button
-                                    onClick={() => {
-                                      setSelectedWork(work);
-                                      setAnswerText("");
-                                    }}
+                                    onClick={() => openWork(work.id)}
                                     className="mt-2 rounded bg-yellow-500 px-3 py-1 text-white"
                                   >
                                     Retry {typeLabel}
                                   </button>
-                                ) : null}
+                                ) : (
+                                  <button
+                                    onClick={() => openWork(work.id)}
+                                    className="mt-2 rounded bg-green-600 px-3 py-1 text-white"
+                                  >
+                                    View {typeLabel}
+                                  </button>
+                                )}
                               </div>
                             ) : (
                               <button
-                                onClick={() => {
-                                  setSelectedWork(work);
-                                  setAnswerText("");
-                                }}
+                                onClick={() => openWork(work.id)}
                                 className="mt-2 rounded bg-blue-500 px-3 py-1 text-white"
                               >
                                 Submit {typeLabel}
@@ -355,49 +309,6 @@ export default function StudentDashboard() {
                 ))
               )}
             </div>
-
-            {selectedWork ? (
-              <div className="rounded-xl bg-white p-6 shadow">
-                <h3 className="mb-2 font-bold">
-                  Submit {getWorkTypeLabel(selectedWork)}
-                </h3>
-
-                <p className="mb-3 text-sm text-gray-600">
-                  {selectedWork.title || getWorkTypeLabel(selectedWork)}
-                </p>
-
-                <textarea
-                  value={answerText}
-                  onChange={(e) => setAnswerText(e.target.value)}
-                  className="w-full rounded border p-2"
-                  rows={6}
-                  placeholder={`Write your ${getWorkTypeLabel(selectedWork).toLowerCase()} answer...`}
-                />
-
-                <div className="mt-3 flex gap-3">
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    className="rounded bg-green-500 px-4 py-2 text-white disabled:opacity-60"
-                  >
-                    {submitting
-                      ? "Submitting..."
-                      : `Submit ${getWorkTypeLabel(selectedWork)}`}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setSelectedWork(null);
-                      setAnswerText("");
-                    }}
-                    disabled={submitting}
-                    className="rounded bg-gray-400 px-4 py-2 text-white disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       </div>

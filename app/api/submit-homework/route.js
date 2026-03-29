@@ -228,7 +228,11 @@ export async function POST(req) {
     if (insertError) {
       console.log("SUBMISSION INSERT ERROR:", insertError);
       return Response.json(
-        { success: false, error: "Failed to save submission." },
+        {
+          success: false,
+          error: insertError.message || "Failed to save submission.",
+          submissionError: insertError,
+        },
         { status: 500 }
       );
     }
@@ -241,30 +245,45 @@ export async function POST(req) {
       notificationMessage = `${studentName} submitted "${workTitle}", got some wrong answers, and is on attempt ${nextAttempt}.`;
     }
 
-    const { error: notificationError } = await supabase
+    const notificationPayload = {
+      teacher_name: teacherName || null,
+      student_name: studentName,
+      class_name: className || null,
+      subject_name: subjectName || null,
+      work_id: workId,
+      work_title: workTitle,
+      message: notificationMessage,
+      type: "homework",
+      attempt_no: nextAttempt,
+      is_read: false,
+    };
+
+    const { data: insertedNotification, error: notificationError } = await supabase
       .from("notifications")
-      .insert([
-        {
-          teacher_name: teacherName || null,
-          student_name: studentName,
-          class_name: className || null,
-          subject_name: subjectName || null,
-          work_id: workId,
-          work_title: workTitle,
-          message: notificationMessage,
-          type: "homework",
-          attempt_no: nextAttempt,
-          is_read: false,
-        },
-      ]);
+      .insert([notificationPayload])
+      .select()
+      .single();
 
     if (notificationError) {
       console.log("NOTIFICATION INSERT ERROR:", notificationError);
+      console.log("NOTIFICATION PAYLOAD:", notificationPayload);
+
+      return Response.json(
+        {
+          success: false,
+          error:
+            notificationError.message || "Notification insert failed.",
+          notificationError,
+          notificationPayload,
+        },
+        { status: 500 }
+      );
     }
 
     return Response.json({
       success: true,
       submission: insertedRow,
+      notification: insertedNotification,
       autoCheck: aiResult,
       summary: {
         attempt_no: nextAttempt,
@@ -281,7 +300,8 @@ export async function POST(req) {
     return Response.json(
       {
         success: false,
-        error: error?.message || "Something went wrong while submitting homework.",
+        error:
+          error?.message || "Something went wrong while submitting homework.",
       },
       { status: 500 }
     );

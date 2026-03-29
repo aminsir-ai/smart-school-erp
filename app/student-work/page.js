@@ -57,7 +57,12 @@ function getSubjectLabel(work) {
 }
 
 function getDescriptionLabel(work) {
-  return work?.description || work?.instructions || "";
+  return (
+    work?.question ||
+    work?.description ||
+    work?.instructions ||
+    ""
+  );
 }
 
 export default function StudentWorkPage() {
@@ -191,7 +196,7 @@ export default function StudentWorkPage() {
 
   const filteredWorks = useMemo(() => {
     return works.filter((work) => {
-      const workType = normalizeWorkType(work?.work_type);
+      const workType = normalizeWorkType(work?.type || work?.work_type);
       const submission = submissionMap[work.id];
       const derivedStatus = submission
         ? normalizeSubmissionStatus(submission?.status, submission?.isSubmitted)
@@ -233,9 +238,9 @@ export default function StudentWorkPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
+      <Header name={studentName} />
       <div className="flex">
-        <Sidebar />
+        <Sidebar role="student" />
 
         <main className="flex-1 p-4 md:p-6">
           <div className="mx-auto max-w-7xl">
@@ -337,7 +342,7 @@ export default function StudentWorkPage() {
               <div className="grid gap-4">
                 {filteredWorks.map((work) => {
                   const submission = submissionMap[work.id];
-                  const workType = normalizeWorkType(work?.work_type);
+                  const workType = normalizeWorkType(work?.type || work?.work_type);
                   const status = submission
                     ? normalizeSubmissionStatus(
                         submission?.status,
@@ -406,6 +411,23 @@ export default function StudentWorkPage() {
                             <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">
                               {getDescriptionLabel(work)}
                             </p>
+                          ) : null}
+
+                          {submission ? (
+                            <div className="mt-3 space-y-1 text-sm text-gray-700">
+                              <p>
+                                <span className="font-semibold">Score:</span>{" "}
+                                {submission.score ?? "-"}
+                              </p>
+                              <p>
+                                <span className="font-semibold">Feedback:</span>{" "}
+                                {submission.feedback || "-"}
+                              </p>
+                              <p>
+                                <span className="font-semibold">Attempt:</span>{" "}
+                                {submission.attempt_no || 1}
+                              </p>
+                            </div>
                           ) : null}
                         </div>
 

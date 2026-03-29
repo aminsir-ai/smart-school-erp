@@ -53,7 +53,7 @@ export default function StudentWorkPage() {
     fetchWorksAndSubmissions(studentClass, studentName);
   }, [isAllowed, studentClass, studentName]);
 
-  const fetchWorksAndSubmissions = async (className, fullStudentName) => {
+  async function fetchWorksAndSubmissions(className, fullStudentName) {
     setMessage("");
 
     const { data: worksData, error: worksError } = await supabase
@@ -98,16 +98,16 @@ export default function StudentWorkPage() {
     });
 
     setSubmissionMap(map);
-  };
+  }
 
-  const handleFileChange = (workId, file) => {
+  function handleFileChange(workId, file) {
     setFiles((prev) => ({
       ...prev,
       [workId]: file || null,
     }));
-  };
+  }
 
-  const handleSubmit = async (work) => {
+  async function handleSubmit(work) {
     const answerText = String(answers[work.id] || "").trim();
     const selectedFile = files[work.id] || null;
 
@@ -119,116 +119,97 @@ export default function StudentWorkPage() {
     setLoadingId(work.id);
     setMessage("");
 
-    let fileUrl = submissionMap[work.id]?.file_url || null;
-    let fileName = submissionMap[work.id]?.file_name || null;
+    let fileUrl = "";
+    let fileName = "";
 
-    if (selectedFile) {
-      const safeFileName = `${Date.now()}-${studentName
-        .replace(/\s+/g, "-")
-        .toLowerCase()}-${selectedFile.name.replace(/\s+/g, "-")}`;
+    try {
+      if (selectedFile) {
+        const safeFileName = `${Date.now()}-${studentName
+          .replace(/\s+/g, "-")
+          .toLowerCase()}-${selectedFile.name.replace(/\s+/g, "-")}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("homework-files")
-        .upload(safeFileName, selectedFile, {
-          upsert: true,
-        });
+        const { error: uploadError } = await supabase.storage
+          .from("homework-files")
+          .upload(safeFileName, selectedFile, {
+            upsert: true,
+          });
 
-      if (uploadError) {
-        console.log("UPLOAD ERROR:", uploadError);
-        setMessage(`File upload failed: ${uploadError.message}`);
+        if (uploadError) {
+          console.log("UPLOAD ERROR:", uploadError);
+          setMessage(`File upload failed: ${uploadError.message}`);
+          setLoadingId("");
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from("homework-files")
+          .getPublicUrl(safeFileName);
+
+        fileUrl = publicUrlData?.publicUrl || "";
+        fileName = selectedFile.name;
+      }
+
+      const response = await fetch("/api/submit-homework", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workId: work.id,
+          teacherName: work.teacher_name || "",
+          studentName,
+          className: studentClass,
+          subjectName: work.subject_name || "",
+          workTitle: work.title || "",
+          studentAnswer: answerText,
+          teacherAnswer:
+            work.answer_sheet ||
+            work.model_answer ||
+            work.answer ||
+            "",
+          fileUrl,
+          fileName,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        console.log("SUBMIT HOMEWORK API ERROR:", result);
+        setMessage(result.error || "Submission failed");
         setLoadingId("");
         return;
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from("homework-files")
-        .getPublicUrl(safeFileName);
+      setAnswers((prev) => ({
+        ...prev,
+        [work.id]: "",
+      }));
 
-      fileUrl = publicUrlData?.publicUrl || null;
-      fileName = selectedFile.name;
+      setFiles((prev) => ({
+        ...prev,
+        [work.id]: null,
+      }));
+
+      setMessage(
+        result.summary?.student_message || "Homework submitted successfully"
+      );
+
+      await fetchWorksAndSubmissions(studentClass, studentName);
+    } catch (error) {
+      console.log("UNEXPECTED SUBMISSION ERROR:", error);
+      setMessage("Something went wrong while submitting homework");
     }
 
-    const existingSubmission = submissionMap[work.id];
-
-    const payload = {
-      work_id: work.id,
-      student_name: studentName,
-      class_name: studentClass,
-      subject_name: work.subject_name || "",
-      work_title: work.title || "",
-      answer: answerText,
-      file_url: fileUrl,
-      file_name: fileName,
-      status: "Pending",
-      submitted_at: new Date().toISOString(),
-    };
-
-    let error = null;
-    let savedRecord = null;
-
-    if (existingSubmission?.id) {
-      const response = await supabase
-        .from("submissions")
-        .update(payload)
-        .eq("id", existingSubmission.id)
-        .select()
-        .single();
-
-      error = response.error;
-      savedRecord = response.data;
-    } else {
-      const response = await supabase
-        .from("submissions")
-        .insert([payload])
-        .select()
-        .single();
-
-      error = response.error;
-      savedRecord = response.data;
-    }
-
-    if (error) {
-      console.log("SUBMISSION SAVE ERROR:", error);
-      setMessage(`Error saving submission: ${error.message}`);
-      setLoadingId("");
-      return;
-    }
-
-    setSubmissionMap((prev) => ({
-      ...prev,
-      [work.id]: savedRecord || {
-        ...payload,
-        id: existingSubmission?.id || work.id,
-      },
-    }));
-
-    setAnswers((prev) => ({
-      ...prev,
-      [work.id]: "",
-    }));
-
-    setFiles((prev) => ({
-      ...prev,
-      [work.id]: null,
-    }));
-
-    setMessage(
-      existingSubmission
-        ? "Homework resubmitted successfully"
-        : "Homework submitted successfully"
-    );
     setLoadingId("");
-  };
+  }
 
-  const handleLogout = () => {
+  function handleLogout() {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
-  };
+  }
 
-  const groupedSubjects = useMemo(
-    () => Object.keys(groupedWorks),
-    [groupedWorks]
-  );
+  const groupedSubjects = useMemo(() => Object.keys(groupedWorks), [groupedWorks]);
 
   if (!isAllowed) {
     return (
@@ -321,13 +302,13 @@ export default function StudentWorkPage() {
 
                           <p className="mb-4 text-gray-700">{work.question}</p>
 
-                          {existing?.answer ? (
+                          {existing?.answer_text || existing?.answer ? (
                             <div className="mb-4 rounded border bg-gray-50 p-3">
                               <p className="text-sm font-semibold text-gray-700">
                                 Last submitted text:
                               </p>
                               <p className="mt-1 whitespace-pre-wrap text-sm text-gray-600">
-                                {existing.answer}
+                                {existing.answer_text || existing.answer}
                               </p>
                             </div>
                           ) : null}
@@ -345,6 +326,42 @@ export default function StudentWorkPage() {
                               >
                                 {existing.file_name || "View File"}
                               </a>
+                            </div>
+                          ) : null}
+
+                          {existing?.feedback ? (
+                            <div className="mb-4 rounded border bg-green-50 p-3">
+                              <p className="text-sm font-semibold text-green-700">
+                                Feedback:
+                              </p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-green-700">
+                                {existing.feedback}
+                              </p>
+
+                              {existing.score !== null &&
+                              existing.score !== undefined ? (
+                                <p className="mt-2 text-sm font-semibold text-green-700">
+                                  Score: {existing.score}
+                                </p>
+                              ) : null}
+
+                              {existing.mistake_reason ? (
+                                <p className="mt-2 text-sm text-red-600">
+                                  Mistake: {existing.mistake_reason}
+                                </p>
+                              ) : null}
+
+                              {existing.corrected_answer ? (
+                                <p className="mt-2 text-sm text-blue-600">
+                                  Correct Answer: {existing.corrected_answer}
+                                </p>
+                              ) : null}
+
+                              {existing.attempt_no ? (
+                                <p className="mt-2 text-sm text-gray-600">
+                                  Attempt: {existing.attempt_no}
+                                </p>
+                              ) : null}
                             </div>
                           ) : null}
 

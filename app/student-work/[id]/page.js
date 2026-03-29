@@ -17,6 +17,7 @@ export default function StudentWorkDetailPage() {
 
   const [answerText, setAnswerText] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
+  const [removePreviousFile, setRemovePreviousFile] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -98,6 +99,9 @@ export default function StudentWorkDetailPage() {
           }
         }
       }
+
+      setSelectedFile(null);
+      setRemovePreviousFile(false);
     } catch (error) {
       console.log("UNEXPECTED LOAD PAGE DATA ERROR:", error);
       setWork(null);
@@ -184,8 +188,13 @@ export default function StudentWorkDetailPage() {
   async function handleSubmit() {
     if (!work) return;
 
-    if (!answerText.trim() && !selectedFile) {
+    if (!answerText.trim() && !selectedFile && !submission?.file_url) {
       alert("Please write your answer or upload a file before submitting.");
+      return;
+    }
+
+    if (!answerText.trim() && !selectedFile && removePreviousFile) {
+      alert("Please write your answer or choose a new file before resubmitting.");
       return;
     }
 
@@ -194,6 +203,11 @@ export default function StudentWorkDetailPage() {
     try {
       let fileUrl = submission?.file_url || null;
       let fileName = submission?.file_name || null;
+
+      if (removePreviousFile) {
+        fileUrl = null;
+        fileName = null;
+      }
 
       if (selectedFile) {
         const uploaded = await uploadAttachment(selectedFile);
@@ -232,7 +246,6 @@ export default function StudentWorkDetailPage() {
       }
 
       alert(result.summary?.student_message || "Work submitted successfully.");
-      setSelectedFile(null);
       await loadPageData();
     } catch (error) {
       console.log("SUBMIT WORK ERROR:", error);
@@ -283,6 +296,7 @@ export default function StudentWorkDetailPage() {
   const typeLabel = getWorkTypeLabel(work);
   const statusLabel = getStatusLabel();
   const referenceAnswer = getReferenceAnswer();
+  const hasPreviousFile = !!submission?.file_url && !removePreviousFile;
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -372,16 +386,42 @@ export default function StudentWorkDetailPage() {
                     </div>
                   ) : null}
 
-                  {submission.file_url ? (
-                    <div className="text-sm">
-                      <a
-                        href={submission.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-blue-600 underline"
+                  {hasPreviousFile ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <a
+                          href={submission.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-blue-600 underline"
+                        >
+                          View previously uploaded file
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRemovePreviousFile(true);
+                            setSelectedFile(null);
+                          }}
+                          className="rounded bg-red-500 px-3 py-2 text-sm font-medium text-white"
+                        >
+                          Remove Previous File
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {removePreviousFile ? (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
+                      Previous attachment will be removed on resubmit.
+                      <button
+                        type="button"
+                        onClick={() => setRemovePreviousFile(false)}
+                        className="ml-3 rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"
                       >
-                        View previously uploaded file
-                      </a>
+                        Undo
+                      </button>
                     </div>
                   ) : null}
                 </div>
@@ -405,17 +445,25 @@ export default function StudentWorkDetailPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0] || null;
                     setSelectedFile(file);
+
+                    if (file) {
+                      setRemovePreviousFile(false);
+                    }
                   }}
                   className="block w-full rounded border bg-white p-2 text-sm"
                 />
 
                 {selectedFile ? (
                   <p className="mt-2 text-sm text-green-600">
-                    Selected file: {selectedFile.name}
+                    Selected new file: {selectedFile.name}
+                  </p>
+                ) : hasPreviousFile ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Previous attachment will remain unless you remove it.
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-gray-500">
-                    No new file selected
+                    No file selected
                   </p>
                 )}
               </div>

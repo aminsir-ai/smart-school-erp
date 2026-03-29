@@ -10,7 +10,6 @@ export default function StudentWorkPage() {
   const [studentClass, setStudentClass] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const [works, setWorks] = useState([]);
   const [groupedWorks, setGroupedWorks] = useState({});
   const [submissionMap, setSubmissionMap] = useState({});
 
@@ -64,19 +63,17 @@ export default function StudentWorkPage() {
 
     if (worksError) {
       console.log("FETCH WORKS ERROR:", worksError);
-      setMessage("Failed to load homework");
+      setMessage("Failed to load work");
       return;
     }
 
-    const workList = worksData || [];
-    setWorks(workList);
-
     const grouped = {};
-    workList.forEach((work) => {
+    (worksData || []).forEach((work) => {
       const subject = work.subject_name || "Other";
       if (!grouped[subject]) grouped[subject] = [];
       grouped[subject].push(work);
     });
+
     setGroupedWorks(grouped);
 
     const { data: submissionsData, error: submissionsError } = await supabase
@@ -107,12 +104,23 @@ export default function StudentWorkPage() {
     }));
   }
 
+  function getWorkTypeLabel(work) {
+    const rawType = String(work?.type || "").trim().toLowerCase();
+
+    if (rawType === "classwork" || rawType === "class work") {
+      return "Class Work";
+    }
+
+    return "Homework";
+  }
+
   async function handleSubmit(work) {
     const answerText = String(answers[work.id] || "").trim();
     const selectedFile = files[work.id] || null;
+    const typeLabel = getWorkTypeLabel(work);
 
     if (!answerText && !selectedFile) {
-      setMessage("Please write an answer or upload a file");
+      setMessage(`Please write an answer or upload a file for ${typeLabel}`);
       return;
     }
 
@@ -175,8 +183,8 @@ export default function StudentWorkPage() {
       const result = await response.json();
 
       if (!result.success) {
-        console.log("SUBMIT HOMEWORK API ERROR:", result);
-        setMessage(result.error || "Submission failed");
+        console.log("SUBMIT WORK API ERROR:", result);
+        setMessage(result.error || `${typeLabel} submission failed`);
         setLoadingId("");
         return;
       }
@@ -192,13 +200,13 @@ export default function StudentWorkPage() {
       }));
 
       setMessage(
-        result.summary?.student_message || "Homework submitted successfully"
+        result.summary?.student_message || `${typeLabel} submitted successfully`
       );
 
       await fetchWorksAndSubmissions(studentClass, studentName);
     } catch (error) {
       console.log("UNEXPECTED SUBMISSION ERROR:", error);
-      setMessage("Something went wrong while submitting homework");
+      setMessage(`Something went wrong while submitting ${typeLabel}`);
     }
 
     setLoadingId("");
@@ -231,7 +239,9 @@ export default function StudentWorkPage() {
             <div className="rounded-xl bg-white p-6 shadow">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold">Student - Homework</h1>
+                  <h1 className="text-3xl font-bold">
+                    Student - Homework & Class Work
+                  </h1>
                   <p className="mt-2 text-gray-600">
                     Class: {studentClass || "N/A"}
                   </p>
@@ -249,7 +259,7 @@ export default function StudentWorkPage() {
             {groupedSubjects.length === 0 ? (
               <div className="rounded-xl bg-white p-6 shadow">
                 <p className="text-gray-500">
-                  No homework available for {studentClass || "your class"}
+                  No work available for {studentClass || "your class"}
                 </p>
               </div>
             ) : (
@@ -262,13 +272,14 @@ export default function StudentWorkPage() {
                   <div className="space-y-5">
                     {groupedWorks[subject].map((work) => {
                       const existing = submissionMap[work.id];
+                      const typeLabel = getWorkTypeLabel(work);
 
                       return (
                         <div key={work.id} className="rounded-lg border p-5">
                           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <h3 className="text-xl font-bold">
-                                {work.title || "Homework"}
+                                {work.title || typeLabel}
                               </h3>
                               <p className="mt-1 text-sm text-gray-600">
                                 Class: {work.class_name || "N/A"} | Subject:{" "}
@@ -277,8 +288,14 @@ export default function StudentWorkPage() {
                             </div>
 
                             <div className="flex flex-wrap gap-2">
-                              <span className="rounded bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-700">
-                                {work.type || "Homework"}
+                              <span
+                                className={`rounded px-3 py-1 text-sm font-semibold ${
+                                  typeLabel === "Class Work"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {typeLabel}
                               </span>
 
                               {existing ? (
@@ -366,7 +383,7 @@ export default function StudentWorkPage() {
                           ) : null}
 
                           <textarea
-                            placeholder="Write your answer..."
+                            placeholder={`Write your ${typeLabel.toLowerCase()} answer...`}
                             className="mb-4 w-full rounded border p-3"
                             rows={4}
                             value={answers[work.id] || ""}
@@ -437,8 +454,8 @@ export default function StudentWorkPage() {
                             {loadingId === work.id
                               ? "Submitting..."
                               : existing
-                              ? "Resubmit Homework"
-                              : "Submit Homework"}
+                              ? `Resubmit ${typeLabel}`
+                              : `Submit ${typeLabel}`}
                           </button>
                         </div>
                       );

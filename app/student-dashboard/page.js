@@ -101,23 +101,36 @@ export default function StudentDashboard() {
     }
   }
 
+  function getWorkTypeLabel(work) {
+    const rawType = String(work?.type || "").trim().toLowerCase();
+
+    if (rawType === "classwork" || rawType === "class work") {
+      return "Class Work";
+    }
+
+    return "Homework";
+  }
+
   const handleLogout = () => {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
   };
 
-  const totalWorks = useMemo(() => {
-    return Object.values(groupedWorks).reduce(
-      (sum, works) => sum + works.length,
-      0
-    );
+  const allWorks = useMemo(() => {
+    return Object.values(groupedWorks).flat();
   }, [groupedWorks]);
 
-  const totalSubmitted = useMemo(() => {
-    return Object.keys(submissionMap).length;
-  }, [submissionMap]);
-
+  const totalWorks = allWorks.length;
+  const totalSubmitted = Object.keys(submissionMap).length;
   const totalPending = Math.max(totalWorks - totalSubmitted, 0);
+
+  const homeworkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Homework"
+  ).length;
+
+  const classWorkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Class Work"
+  ).length;
 
   async function handleSubmit() {
     if (!selectedWork) return;
@@ -137,7 +150,7 @@ export default function StudentDashboard() {
         },
         body: JSON.stringify({
           workId: selectedWork.id,
-          teacherName: selectedWork.teacher_name || "", // ✅ important fix
+          teacherName: selectedWork.teacher_name || "",
           studentName,
           className: selectedWork.class_name,
           subjectName: selectedWork.subject_name,
@@ -159,14 +172,14 @@ export default function StudentDashboard() {
       }
 
       alert(
-        result.summary?.student_message || "Homework submitted successfully."
+        result.summary?.student_message || "Work submitted successfully."
       );
 
       setAnswerText("");
       setSelectedWork(null);
       await fetchData();
     } catch (error) {
-      console.log("SUBMIT HOMEWORK ERROR:", error);
+      console.log("SUBMIT WORK ERROR:", error);
       alert("Submission failed");
     } finally {
       setSubmitting(false);
@@ -198,10 +211,24 @@ export default function StudentDashboard() {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-5 gap-4">
               <div className="rounded bg-white p-4 shadow">
-                <p className="text-sm text-gray-500">Total Homework</p>
+                <p className="text-sm text-gray-500">Total Work</p>
                 <h2 className="mt-2 text-3xl font-bold">{totalWorks}</h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Homework</p>
+                <h2 className="mt-2 text-3xl font-bold text-blue-600">
+                  {homeworkCount}
+                </h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Class Work</p>
+                <h2 className="mt-2 text-3xl font-bold text-purple-600">
+                  {classWorkCount}
+                </h2>
               </div>
 
               <div className="rounded bg-white p-4 shadow">
@@ -220,10 +247,12 @@ export default function StudentDashboard() {
             </div>
 
             <div className="rounded-xl bg-white p-6 shadow">
-              <h2 className="mb-4 text-lg font-semibold">Homework</h2>
+              <h2 className="mb-4 text-lg font-semibold">
+                Homework & Class Work
+              </h2>
 
               {Object.keys(groupedWorks).length === 0 ? (
-                <p className="text-gray-500">No homework available</p>
+                <p className="text-gray-500">No work available</p>
               ) : (
                 Object.keys(groupedWorks).map((subject) => (
                   <div key={subject} className="mb-6">
@@ -232,19 +261,34 @@ export default function StudentDashboard() {
                     <div className="space-y-3">
                       {groupedWorks[subject].map((work) => {
                         const submission = submissionMap[work.id];
+                        const typeLabel = getWorkTypeLabel(work);
 
                         return (
                           <div
                             key={work.id}
                             className="rounded border p-3 hover:bg-gray-50"
                           >
-                            <h4 className="font-semibold">
-                              {work.title || "Homework"}
-                            </h4>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h4 className="font-semibold">
+                                  {work.title || typeLabel}
+                                </h4>
 
-                            <p className="text-sm text-gray-600">
-                              {work.question}
-                            </p>
+                                <p className="text-sm text-gray-600">
+                                  {work.question}
+                                </p>
+                              </div>
+
+                              <span
+                                className={`rounded px-3 py-1 text-xs font-semibold ${
+                                  typeLabel === "Class Work"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {typeLabel}
+                              </span>
+                            </div>
 
                             {submission ? (
                               <div className="mt-2 text-sm space-y-1">
@@ -288,7 +332,7 @@ export default function StudentDashboard() {
                                     }}
                                     className="mt-2 rounded bg-yellow-500 px-3 py-1 text-white"
                                   >
-                                    Retry
+                                    Retry {typeLabel}
                                   </button>
                                 ) : null}
                               </div>
@@ -300,7 +344,7 @@ export default function StudentDashboard() {
                                 }}
                                 className="mt-2 rounded bg-blue-500 px-3 py-1 text-white"
                               >
-                                Submit
+                                Submit {typeLabel}
                               </button>
                             )}
                           </div>
@@ -314,10 +358,12 @@ export default function StudentDashboard() {
 
             {selectedWork ? (
               <div className="rounded-xl bg-white p-6 shadow">
-                <h3 className="mb-2 font-bold">Submit Homework</h3>
+                <h3 className="mb-2 font-bold">
+                  Submit {getWorkTypeLabel(selectedWork)}
+                </h3>
 
                 <p className="mb-3 text-sm text-gray-600">
-                  {selectedWork.title || "Homework"}
+                  {selectedWork.title || getWorkTypeLabel(selectedWork)}
                 </p>
 
                 <textarea
@@ -325,7 +371,7 @@ export default function StudentDashboard() {
                   onChange={(e) => setAnswerText(e.target.value)}
                   className="w-full rounded border p-2"
                   rows={6}
-                  placeholder="Write your answer..."
+                  placeholder={`Write your ${getWorkTypeLabel(selectedWork).toLowerCase()} answer...`}
                 />
 
                 <div className="mt-3 flex gap-3">
@@ -334,7 +380,9 @@ export default function StudentDashboard() {
                     disabled={submitting}
                     className="rounded bg-green-500 px-4 py-2 text-white disabled:opacity-60"
                   >
-                    {submitting ? "Submitting..." : "Submit"}
+                    {submitting
+                      ? "Submitting..."
+                      : `Submit ${getWorkTypeLabel(selectedWork)}`}
                   </button>
 
                   <button

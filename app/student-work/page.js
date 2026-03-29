@@ -57,12 +57,7 @@ function getSubjectLabel(work) {
 }
 
 function getDescriptionLabel(work) {
-  return (
-    work?.question ||
-    work?.description ||
-    work?.instructions ||
-    ""
-  );
+  return work?.question || work?.description || work?.instructions || "";
 }
 
 export default function StudentWorkPage() {
@@ -126,24 +121,40 @@ export default function StudentWorkPage() {
           user?.class || user?.class_name || ""
         ).trim();
 
-        let workQuery = supabase
+        const { data: workData, error: workError } = await supabase
           .from("works")
           .select("*")
           .order("created_at", { ascending: false });
-
-        if (currentStudentClass) {
-          workQuery = workQuery.or(
-            `class.eq.${currentStudentClass},class_name.eq.${currentStudentClass}`
-          );
-        }
-
-        const { data: workData, error: workError } = await workQuery;
 
         if (workError) {
           console.log("WORK FETCH ERROR:", workError);
           setWorks([]);
         } else {
-          setWorks(Array.isArray(workData) ? workData : []);
+          let filteredWorks = Array.isArray(workData) ? workData : [];
+
+          if (currentStudentClass) {
+            const studentClassLower = currentStudentClass.toLowerCase();
+
+            filteredWorks = filteredWorks.filter((work) => {
+              const workClass = String(
+                work?.class ||
+                  work?.class_name ||
+                  work?.student_class ||
+                  work?.class_label ||
+                  ""
+              )
+                .trim()
+                .toLowerCase();
+
+              return (
+                workClass === studentClassLower ||
+                workClass.includes(studentClassLower) ||
+                studentClassLower.includes(workClass)
+              );
+            });
+          }
+
+          setWorks(filteredWorks);
         }
 
         if (currentStudentId) {
@@ -342,7 +353,9 @@ export default function StudentWorkPage() {
               <div className="grid gap-4">
                 {filteredWorks.map((work) => {
                   const submission = submissionMap[work.id];
-                  const workType = normalizeWorkType(work?.type || work?.work_type);
+                  const workType = normalizeWorkType(
+                    work?.type || work?.work_type
+                  );
                   const status = submission
                     ? normalizeSubmissionStatus(
                         submission?.status,

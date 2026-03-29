@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
-import { supabase } from "@/lib/supabaseclient";
+import { supabase } from "@/lib/supabase";
 
 const WORK_TYPE_TABS = ["All", "Homework", "Class Work"];
 const STATUS_TABS = ["All", "Pending", "Submitted", "Checked"];
@@ -116,6 +116,7 @@ export default function StudentWorkPage() {
         const currentStudentId = String(
           user?.id || user?.student_id || user?.name || ""
         );
+
         const currentStudentClass = String(
           user?.class || user?.class_name || ""
         ).trim();

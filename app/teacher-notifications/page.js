@@ -53,7 +53,7 @@ export default function TeacherNotificationsPage() {
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .or(`teacher_name.eq.${teacherName},teacher_name.is.null`)
+        .eq("teacher_name", teacherName)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -126,7 +126,7 @@ export default function TeacherNotificationsPage() {
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
-      <Header />
+      <Header name={teacherName} />
       <div style={{ display: "flex" }}>
         <Sidebar role="teacher" />
 

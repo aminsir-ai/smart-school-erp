@@ -13,8 +13,11 @@ export default function StudentWorkDetailPage() {
   const [studentName, setStudentName] = useState("Student");
   const [studentClass, setStudentClass] = useState("");
   const [work, setWork] = useState(null);
+  const [submission, setSubmission] = useState(null);
+
   const [answerText, setAnswerText] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -48,28 +51,55 @@ export default function StudentWorkDetailPage() {
 
   useEffect(() => {
     if (!workId) return;
-    loadWork();
+    loadPageData();
   }, [workId]);
 
-  async function loadWork() {
+  async function loadPageData() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const storedUser = localStorage.getItem("erp_user");
+      const user = storedUser ? JSON.parse(storedUser) : null;
+      const currentStudentName = user?.name || "";
+
+      const { data: workData, error: workError } = await supabase
         .from("works")
         .select("*")
         .eq("id", workId)
         .single();
 
-      if (error) {
-        console.log("LOAD WORK ERROR:", error);
+      if (workError) {
+        console.log("LOAD WORK ERROR:", workError);
         setWork(null);
       } else {
-        setWork(data || null);
+        setWork(workData || null);
+      }
+
+      if (currentStudentName) {
+        const { data: submissionData, error: submissionError } = await supabase
+          .from("submissions")
+          .select("*")
+          .eq("work_id", workId)
+          .eq("student_name", currentStudentName)
+          .order("submitted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (submissionError) {
+          console.log("LOAD SUBMISSION ERROR:", submissionError);
+          setSubmission(null);
+        } else {
+          setSubmission(submissionData || null);
+
+          if (submissionData?.answer_text) {
+            setAnswerText(submissionData.answer_text);
+          }
+        }
       }
     } catch (error) {
-      console.log("UNEXPECTED LOAD WORK ERROR:", error);
+      console.log("UNEXPECTED LOAD PAGE DATA ERROR:", error);
       setWork(null);
+      setSubmission(null);
     } finally {
       setLoading(false);
     }
@@ -85,6 +115,34 @@ export default function StudentWorkDetailPage() {
     }
 
     return "Homework";
+  }
+
+  function getStatusLabel() {
+    return submission?.status || "Pending";
+  }
+
+  function getStatusBadgeClass(status) {
+    const text = String(status || "").toLowerCase();
+
+    if (text === "checked") {
+      return "bg-green-100 text-green-700";
+    }
+
+    if (text === "submitted") {
+      return "bg-blue-100 text-blue-700";
+    }
+
+    return "bg-yellow-100 text-yellow-700";
+  }
+
+  function getReferenceAnswer() {
+    return (
+      submission?.corrected_answer ||
+      work?.answer_sheet ||
+      work?.answer ||
+      work?.model_answer ||
+      ""
+    );
   }
 
   async function uploadAttachment(file) {
@@ -127,8 +185,8 @@ export default function StudentWorkDetailPage() {
     setSubmitting(true);
 
     try {
-      let fileUrl = null;
-      let fileName = null;
+      let fileUrl = submission?.file_url || null;
+      let fileName = submission?.file_name || null;
 
       if (selectedFile) {
         const uploaded = await uploadAttachment(selectedFile);
@@ -167,7 +225,8 @@ export default function StudentWorkDetailPage() {
       }
 
       alert(result.summary?.student_message || "Work submitted successfully.");
-      window.location.href = "/student-work";
+      setSelectedFile(null);
+      await loadPageData();
     } catch (error) {
       console.log("SUBMIT WORK ERROR:", error);
       alert("Submission failed");
@@ -215,6 +274,8 @@ export default function StudentWorkDetailPage() {
   }
 
   const typeLabel = getWorkTypeLabel(work);
+  const statusLabel = getStatusLabel();
+  const referenceAnswer = getReferenceAnswer();
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -254,9 +315,69 @@ export default function StudentWorkDetailPage() {
             </div>
 
             <div className="rounded-xl bg-white p-6 shadow">
-              <h2 className="mb-3 text-lg font-semibold text-gray-800">
-                Submit {typeLabel}
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Submit {typeLabel}
+                </h2>
+
+                <span
+                  className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusBadgeClass(
+                    statusLabel
+                  )}`}
+                >
+                  {statusLabel}
+                </span>
+              </div>
+
+              {submission ? (
+                <div className="mb-5 space-y-3">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+                    <p>
+                      <span className="font-semibold">Attempt:</span>{" "}
+                      {submission.attempt_no || 1}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Score:</span>{" "}
+                      {submission.score ?? "-"}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-semibold">Feedback:</span>{" "}
+                      {submission.feedback || "-"}
+                    </p>
+                  </div>
+
+                  {submission.mistake_reason ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                      <span className="font-semibold">Mistake Reason:</span>{" "}
+                      {submission.mistake_reason}
+                    </div>
+                  ) : null}
+
+                  {referenceAnswer ? (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                      <h3 className="mb-2 text-sm font-semibold text-green-800">
+                        Reference Answer
+                      </h3>
+                      <p className="whitespace-pre-wrap text-sm text-green-900">
+                        {referenceAnswer}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {submission.file_url ? (
+                    <div className="text-sm">
+                      <a
+                        href={submission.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-blue-600 underline"
+                      >
+                        View previously uploaded file
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <textarea
                 value={answerText}
@@ -286,7 +407,7 @@ export default function StudentWorkDetailPage() {
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-gray-500">
-                    No file selected
+                    No new file selected
                   </p>
                 )}
               </div>
@@ -297,7 +418,11 @@ export default function StudentWorkDetailPage() {
                   disabled={submitting}
                   className="rounded bg-green-600 px-4 py-2 text-white disabled:opacity-60"
                 >
-                  {submitting ? "Submitting..." : `Submit ${typeLabel}`}
+                  {submitting
+                    ? "Submitting..."
+                    : submission
+                    ? `Resubmit ${typeLabel}`
+                    : `Submit ${typeLabel}`}
                 </button>
 
                 <button
@@ -305,7 +430,7 @@ export default function StudentWorkDetailPage() {
                   disabled={submitting}
                   className="rounded bg-gray-500 px-4 py-2 text-white disabled:opacity-60"
                 >
-                  Cancel
+                  Back
                 </button>
               </div>
             </div>

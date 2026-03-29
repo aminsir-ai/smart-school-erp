@@ -17,6 +17,7 @@ export default function StudentWorkPage() {
   const [files, setFiles] = useState({});
   const [loadingId, setLoadingId] = useState("");
   const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState("All");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -219,6 +220,41 @@ export default function StudentWorkPage() {
 
   const groupedSubjects = useMemo(() => Object.keys(groupedWorks), [groupedWorks]);
 
+  const filteredGroupedWorks = useMemo(() => {
+    if (activeTab === "All") {
+      return groupedWorks;
+    }
+
+    const filtered = {};
+
+    Object.entries(groupedWorks).forEach(([subject, works]) => {
+      const matchingWorks = works.filter(
+        (work) => getWorkTypeLabel(work) === activeTab
+      );
+
+      if (matchingWorks.length > 0) {
+        filtered[subject] = matchingWorks;
+      }
+    });
+
+    return filtered;
+  }, [groupedWorks, activeTab]);
+
+  const filteredSubjects = useMemo(
+    () => Object.keys(filteredGroupedWorks),
+    [filteredGroupedWorks]
+  );
+
+  const allWorks = useMemo(() => Object.values(groupedWorks).flat(), [groupedWorks]);
+
+  const homeworkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Homework"
+  ).length;
+
+  const classWorkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Class Work"
+  ).length;
+
   if (!isAllowed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -256,21 +292,59 @@ export default function StudentWorkPage() {
               </div>
             </div>
 
-            {groupedSubjects.length === 0 ? (
+            <div className="rounded-xl bg-white p-4 shadow">
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setActiveTab("All")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                    activeTab === "All"
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  All ({allWorks.length})
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("Homework")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                    activeTab === "Homework"
+                      ? "bg-blue-600 text-white"
+                      : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  }`}
+                >
+                  Homework ({homeworkCount})
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("Class Work")}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                    activeTab === "Class Work"
+                      ? "bg-purple-600 text-white"
+                      : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                  }`}
+                >
+                  Class Work ({classWorkCount})
+                </button>
+              </div>
+            </div>
+
+            {filteredSubjects.length === 0 ? (
               <div className="rounded-xl bg-white p-6 shadow">
                 <p className="text-gray-500">
-                  No work available for {studentClass || "your class"}
+                  No {activeTab === "All" ? "work" : activeTab.toLowerCase()} available
+                  for {studentClass || "your class"}
                 </p>
               </div>
             ) : (
-              groupedSubjects.map((subject) => (
+              filteredSubjects.map((subject) => (
                 <div key={subject} className="rounded-xl bg-white p-6 shadow">
                   <h2 className="mb-4 text-2xl font-bold text-blue-600">
                     {subject}
                   </h2>
 
                   <div className="space-y-5">
-                    {groupedWorks[subject].map((work) => {
+                    {filteredGroupedWorks[subject].map((work) => {
                       const existing = submissionMap[work.id];
                       const typeLabel = getWorkTypeLabel(work);
 

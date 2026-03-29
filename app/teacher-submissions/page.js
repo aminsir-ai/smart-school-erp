@@ -1,15 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
 export default function TeacherSubmissionsPage() {
-  const searchParams = useSearchParams();
-  const highlightWorkId = searchParams.get("workId");
-  const highlightStudentName = searchParams.get("studentName");
+  const [highlightWorkId, setHighlightWorkId] = useState("");
+  const [highlightStudentName, setHighlightStudentName] = useState("");
 
   const [teacherName, setTeacherName] = useState("Teacher");
   const [isAllowed, setIsAllowed] = useState(false);
@@ -29,6 +27,16 @@ export default function TeacherSubmissionsPage() {
   const [scoreInputs, setScoreInputs] = useState({});
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    setHighlightWorkId(params.get("workId") || "");
+    setHighlightStudentName(params.get("studentName") || "");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const storedUser = localStorage.getItem("erp_user");
 
     if (!storedUser) {
@@ -57,18 +65,17 @@ export default function TeacherSubmissionsPage() {
   }, []);
 
   useEffect(() => {
-    if (isAllowed) {
-      fetchSubmissions();
-    }
+    if (!isAllowed) return;
+    fetchSubmissions();
   }, [isAllowed]);
 
   useEffect(() => {
-    if (!highlightWorkId) return;
+    if (!highlightWorkId || submissions.length === 0) return;
+    if (typeof document === "undefined") return;
 
     const timer = setTimeout(() => {
-      const el = document.querySelector(
-        `[data-work-id="${highlightWorkId}"][data-student-name="${highlightStudentName || ""}"]`
-      );
+      const selector = `[data-work-id="${highlightWorkId}"][data-student-name="${highlightStudentName || ""}"]`;
+      const el = document.querySelector(selector);
 
       if (el) {
         el.scrollIntoView({
@@ -117,9 +124,9 @@ export default function TeacherSubmissionsPage() {
       console.log("UNEXPECTED FETCH ERROR:", error);
       setSubmissions([]);
       setPageMessage("Something went wrong while loading submissions.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function updateSubmissionStatus(id, newStatus) {
@@ -168,13 +175,11 @@ export default function TeacherSubmissionsPage() {
 
         if (Number.isNaN(parsedScore)) {
           setPageMessage("Score must be a valid number.");
-          setSavingId(null);
           return;
         }
 
         if (parsedScore < 0) {
           setPageMessage("Score cannot be less than 0.");
-          setSavingId(null);
           return;
         }
 
@@ -257,7 +262,6 @@ export default function TeacherSubmissionsPage() {
     if (!dateValue) return "-";
 
     const date = new Date(dateValue);
-
     if (Number.isNaN(date.getTime())) return "-";
 
     return date.toLocaleString("en-IN", {

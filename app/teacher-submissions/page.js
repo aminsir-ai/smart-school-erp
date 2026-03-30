@@ -129,35 +129,24 @@ export default function TeacherSubmissionsPage() {
     }
   }
 
-  async function updateSubmissionStatus(id, newStatus) {
-    try {
-      setUpdatingId(id);
-      setPageMessage("");
+  function parseScoreValue(rawScore) {
+    let scoreValue = null;
 
-      const { error } = await supabase
-        .from("submissions")
-        .update({ status: newStatus })
-        .eq("id", id);
+    if (rawScore !== "" && rawScore !== null && rawScore !== undefined) {
+      const parsedScore = Number(rawScore);
 
-      if (error) {
-        console.log("UPDATE STATUS ERROR:", error);
-        setPageMessage("Failed to update status.");
-        return;
+      if (Number.isNaN(parsedScore)) {
+        return { error: "Score must be a valid number.", scoreValue: null };
       }
 
-      setSubmissions((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, status: newStatus } : item
-        )
-      );
+      if (parsedScore < 0) {
+        return { error: "Score cannot be less than 0.", scoreValue: null };
+      }
 
-      setPageMessage(`Submission marked as ${newStatus}.`);
-    } catch (error) {
-      console.log("UNEXPECTED STATUS UPDATE ERROR:", error);
-      setPageMessage("Something went wrong while updating status.");
-    } finally {
-      setUpdatingId(null);
+      scoreValue = parsedScore;
     }
+
+    return { error: null, scoreValue };
   }
 
   async function saveTeacherReview(id) {
@@ -168,22 +157,11 @@ export default function TeacherSubmissionsPage() {
       const feedbackValue = String(feedbackInputs[id] || "").trim();
       const rawScore = scoreInputs[id];
 
-      let scoreValue = null;
+      const { error: scoreError, scoreValue } = parseScoreValue(rawScore);
 
-      if (rawScore !== "" && rawScore !== null && rawScore !== undefined) {
-        const parsedScore = Number(rawScore);
-
-        if (Number.isNaN(parsedScore)) {
-          setPageMessage("Score must be a valid number.");
-          return;
-        }
-
-        if (parsedScore < 0) {
-          setPageMessage("Score cannot be less than 0.");
-          return;
-        }
-
-        scoreValue = parsedScore;
+      if (scoreError) {
+        setPageMessage(scoreError);
+        return;
       }
 
       const { error } = await supabase
@@ -218,6 +196,91 @@ export default function TeacherSubmissionsPage() {
       setPageMessage("Something went wrong while saving review.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function updateSubmissionStatus(id, newStatus) {
+    try {
+      setUpdatingId(id);
+      setPageMessage("");
+
+      const { error } = await supabase
+        .from("submissions")
+        .update({ status: newStatus })
+        .eq("id", id);
+
+      if (error) {
+        console.log("UPDATE STATUS ERROR:", error);
+        setPageMessage("Failed to update status.");
+        return;
+      }
+
+      setSubmissions((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: newStatus } : item
+        )
+      );
+
+      setPageMessage(`Submission marked as ${newStatus}.`);
+    } catch (error) {
+      console.log("UNEXPECTED STATUS UPDATE ERROR:", error);
+      setPageMessage("Something went wrong while updating status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function saveReviewAndChangeStatus(id, newStatus) {
+    try {
+      setSavingId(id);
+      setUpdatingId(id);
+      setPageMessage("");
+
+      const feedbackValue = String(feedbackInputs[id] || "").trim();
+      const rawScore = scoreInputs[id];
+
+      const { error: scoreError, scoreValue } = parseScoreValue(rawScore);
+
+      if (scoreError) {
+        setPageMessage(scoreError);
+        return;
+      }
+
+      const { error } = await supabase
+        .from("submissions")
+        .update({
+          feedback: feedbackValue || null,
+          score: scoreValue,
+          status: newStatus,
+        })
+        .eq("id", id);
+
+      if (error) {
+        console.log("SAVE AND STATUS UPDATE ERROR:", error);
+        setPageMessage(`Failed to save review and mark ${newStatus}.`);
+        return;
+      }
+
+      setSubmissions((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                feedback: feedbackValue || null,
+                score: scoreValue,
+                status: newStatus,
+              }
+            : item
+        )
+      );
+
+      setPageMessage(`Review saved and submission marked as ${newStatus}.`);
+    } catch (error) {
+      console.log("UNEXPECTED SAVE AND STATUS UPDATE ERROR:", error);
+      setPageMessage("Something went wrong while saving review and updating status.");
+    } finally {
+      setSavingId(null);
+      setUpdatingId(null);
     }
   }
 
@@ -504,6 +567,7 @@ export default function TeacherSubmissionsPage() {
                   const currentStatus = item.status || "Pending";
                   const isSaving = savingId === item.id;
                   const isUpdating = updatingId === item.id;
+                  const isBusy = isSaving || isUpdating;
 
                   const isHighlighted =
                     highlightWorkId === item.work_id &&
@@ -814,7 +878,7 @@ export default function TeacherSubmissionsPage() {
                         >
                           <button
                             onClick={() => saveTeacherReview(item.id)}
-                            disabled={isSaving}
+                            disabled={isBusy}
                             style={{
                               backgroundColor: "#2563eb",
                               color: "#ffffff",
@@ -823,8 +887,8 @@ export default function TeacherSubmissionsPage() {
                               padding: "10px 12px",
                               fontSize: "13px",
                               fontWeight: "600",
-                              cursor: isSaving ? "not-allowed" : "pointer",
-                              opacity: isSaving ? 0.6 : 1,
+                              cursor: isBusy ? "not-allowed" : "pointer",
+                              opacity: isBusy ? 0.6 : 1,
                             }}
                           >
                             💾 Save Review
@@ -832,9 +896,9 @@ export default function TeacherSubmissionsPage() {
 
                           <button
                             onClick={() =>
-                              updateSubmissionStatus(item.id, "Checked")
+                              saveReviewAndChangeStatus(item.id, "Checked")
                             }
-                            disabled={isUpdating}
+                            disabled={isBusy}
                             style={{
                               backgroundColor: "#16a34a",
                               color: "#ffffff",
@@ -843,8 +907,8 @@ export default function TeacherSubmissionsPage() {
                               padding: "10px 12px",
                               fontSize: "13px",
                               fontWeight: "600",
-                              cursor: isUpdating ? "not-allowed" : "pointer",
-                              opacity: isUpdating ? 0.6 : 1,
+                              cursor: isBusy ? "not-allowed" : "pointer",
+                              opacity: isBusy ? 0.6 : 1,
                             }}
                           >
                             ✅ Mark Checked
@@ -854,7 +918,7 @@ export default function TeacherSubmissionsPage() {
                             onClick={() =>
                               updateSubmissionStatus(item.id, "Pending")
                             }
-                            disabled={isUpdating}
+                            disabled={isBusy}
                             style={{
                               backgroundColor: "#f59e0b",
                               color: "#ffffff",
@@ -863,8 +927,8 @@ export default function TeacherSubmissionsPage() {
                               padding: "10px 12px",
                               fontSize: "13px",
                               fontWeight: "600",
-                              cursor: isUpdating ? "not-allowed" : "pointer",
-                              opacity: isUpdating ? 0.6 : 1,
+                              cursor: isBusy ? "not-allowed" : "pointer",
+                              opacity: isBusy ? 0.6 : 1,
                             }}
                           >
                             ⏳ Mark Pending

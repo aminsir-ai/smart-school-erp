@@ -14,15 +14,16 @@ export default function LoginPage() {
     setMessage("");
 
     if (!name.trim()) {
-      setMessage(
-        role === "student"
-          ? "Please enter student login name"
-          : "Please enter name"
-      );
+      setMessage("Please enter name");
       return;
     }
 
-    if ((role === "student" || role === "teacher") && !pin.trim()) {
+    if (
+      (role === "student" ||
+        role === "teacher" ||
+        role === "parent") &&
+      !pin.trim()
+    ) {
       setMessage("Please enter PIN");
       return;
     }
@@ -34,8 +35,9 @@ export default function LoginPage() {
       let data = null;
       let error = null;
 
+      // ================= STUDENT =================
       if (role === "student") {
-        const response = await supabase
+        const res = await supabase
           .from("students")
           .select("*")
           .eq("login_name", name.trim())
@@ -43,8 +45,8 @@ export default function LoginPage() {
           .eq("active", true)
           .single();
 
-        data = response.data;
-        error = response.error;
+        data = res.data;
+        error = res.error;
 
         if (error || !data) {
           setMessage("Student not found");
@@ -55,20 +57,18 @@ export default function LoginPage() {
         const loginUser = {
           id: data.id,
           name: data.name,
-          login_name: data.login_name || "",
           role: "student",
-          class_name: data.class_name || "",
-          pin: data.pin || "",
+          class_name: data.class_name,
         };
 
         localStorage.setItem("erp_user", JSON.stringify(loginUser));
-        setMessage(`Welcome ${data.login_name || data.name}`);
         window.location.href = "/student-dashboard";
         return;
       }
 
+      // ================= TEACHER =================
       if (role === "teacher") {
-        const response = await supabase
+        const res = await supabase
           .from("teachers")
           .select("*")
           .eq("name", name.trim())
@@ -76,8 +76,8 @@ export default function LoginPage() {
           .eq("active", true)
           .single();
 
-        data = response.data;
-        error = response.error;
+        data = res.data;
+        error = res.error;
 
         if (error || !data) {
           setMessage("Teacher not found");
@@ -89,25 +89,55 @@ export default function LoginPage() {
           id: data.id,
           name: data.name,
           role: "teacher",
-          pin: data.pin || "",
         };
 
         localStorage.setItem("erp_user", JSON.stringify(loginUser));
-        setMessage(`Welcome ${data.name}`);
         window.location.href = "/teacher-dashboard";
         return;
       }
 
+      // ================= PARENT (NEW) =================
+      if (role === "parent") {
+        const res = await supabase
+          .from("parents")
+          .select("*")
+          .eq("name", name.trim())
+          .eq("pin", pin.trim())
+          .eq("active", true)
+          .single();
+
+        data = res.data;
+        error = res.error;
+
+        if (error || !data) {
+          setMessage("Parent not found");
+          setLoading(false);
+          return;
+        }
+
+        const loginUser = {
+          id: data.id,
+          name: data.name,
+          role: "parent",
+          student_id: data.student_id, // VERY IMPORTANT
+        };
+
+        localStorage.setItem("erp_user", JSON.stringify(loginUser));
+        window.location.href = "/parent-dashboard";
+        return;
+      }
+
+      // ================= ADMIN =================
       if (role === "admin" || role === "management") {
-        const response = await supabase
+        const res = await supabase
           .from("users")
           .select("*")
           .eq("name", name.trim())
           .eq("role", role)
           .single();
 
-        data = response.data;
-        error = response.error;
+        data = res.data;
+        error = res.error;
 
         if (error || !data) {
           setMessage("User not found");
@@ -119,25 +149,22 @@ export default function LoginPage() {
           id: data.id,
           name: data.name,
           role: data.role,
-          class_name: data.class_name || "",
         };
 
         localStorage.setItem("erp_user", JSON.stringify(loginUser));
-        setMessage(`Welcome ${data.name} (${data.role})`);
 
-        if (data.role === "admin") {
-          window.location.href = "/admin-dashboard";
-        } else {
-          window.location.href = "/management-dashboard";
-        }
+        window.location.href =
+          data.role === "admin"
+            ? "/admin-dashboard"
+            : "/management-dashboard";
 
         return;
       }
 
       setMessage("Invalid role selected");
     } catch (err) {
-      console.log("LOGIN ERROR:", err);
-      setMessage("Something went wrong during login");
+      console.log(err);
+      setMessage("Login error");
     }
 
     setLoading(false);
@@ -150,15 +177,15 @@ export default function LoginPage() {
 
         <input
           type="text"
-          placeholder={
-            role === "student" ? "Enter student login name" : "Enter name"
-          }
+          placeholder="Enter name"
           className="mb-3 w-full rounded border p-2"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
 
-        {(role === "student" || role === "teacher") && (
+        {(role === "student" ||
+          role === "teacher" ||
+          role === "parent") && (
           <input
             type="text"
             placeholder="Enter PIN"
@@ -174,12 +201,13 @@ export default function LoginPage() {
           onChange={(e) => {
             setRole(e.target.value);
             setMessage("");
-            setPin("");
             setName("");
+            setPin("");
           }}
         >
           <option value="student">Student</option>
           <option value="teacher">Teacher</option>
+          <option value="parent">Parent</option> {/* NEW */}
           <option value="admin">Admin</option>
           <option value="management">Management</option>
         </select>
@@ -187,14 +215,16 @@ export default function LoginPage() {
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="w-full rounded bg-blue-500 p-2 text-white disabled:opacity-60"
+          className="w-full rounded bg-blue-500 p-2 text-white"
         >
           {loading ? "Checking..." : "Login"}
         </button>
 
-        {message ? (
-          <p className="mt-3 text-center text-sm text-gray-600">{message}</p>
-        ) : null}
+        {message && (
+          <p className="mt-3 text-center text-sm text-gray-600">
+            {message}
+          </p>
+        )}
       </div>
     </div>
   );

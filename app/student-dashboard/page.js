@@ -20,7 +20,16 @@ export default function StudentDashboard() {
       return;
     }
 
-    let user = JSON.parse(storedUser);
+    let user = null;
+
+    try {
+      user = JSON.parse(storedUser);
+    } catch (error) {
+      console.log("STUDENT USER PARSE ERROR:", error);
+      localStorage.removeItem("erp_user");
+      window.location.href = "/login";
+      return;
+    }
 
     if (!user || user.role !== "student") {
       window.location.href = "/login";
@@ -28,92 +37,110 @@ export default function StudentDashboard() {
     }
 
     setStudentName(user.name || "Student");
-    setClassName(user.class || user.class_name || "");
+    setClassName(user.class_name || user.class || "");
     setIsAllowed(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!isAllowed || !className || !studentName) return;
     fetchData();
-  }, [isAllowed]);
+  }, [isAllowed, className, studentName]);
 
   async function fetchData() {
     try {
-      const storedUser = JSON.parse(localStorage.getItem("erp_user"));
-
-      const currentStudentId = String(
-        storedUser?.id || storedUser?.student_id || storedUser?.name || ""
-      );
-
-      const currentStudentClass = String(
-        storedUser?.class || storedUser?.class_name || ""
-      ).toLowerCase();
-
-      // ✅ GET WORKS (SAFE FILTER)
-      const { data: workData } = await supabase
+      const { data: worksData, error: worksError } = await supabase
         .from("works")
         .select("*")
+        .eq("class_name", className)
         .order("created_at", { ascending: false });
 
-      let filteredWorks = (workData || []).filter((w) => {
-        const workClass = String(
-          w?.class || w?.class_name || w?.student_class || ""
-        ).toLowerCase();
+      if (worksError) {
+        console.log("FETCH WORKS ERROR:", worksError);
+        setGroupedWorks({});
+      } else {
+        const grouped = {};
 
-        return workClass.includes(currentStudentClass);
-      });
+        (worksData || []).forEach((work) => {
+          const subject = work.subject_name || work.subject || "Other";
 
-      // GROUP BY SUBJECT
-      const grouped = {};
-      filteredWorks.forEach((w) => {
-        const subject = w.subject || w.subject_name || "Other";
-        if (!grouped[subject]) grouped[subject] = [];
-        grouped[subject].push(w);
-      });
+          if (!grouped[subject]) {
+            grouped[subject] = [];
+          }
 
-      setGroupedWorks(grouped);
+          grouped[subject].push(work);
+        });
 
-      // ✅ GET SUBMISSIONS
-      const { data: submissionData } = await supabase
+        setGroupedWorks(grouped);
+      }
+
+      const { data: submissionsData, error: submissionsError } = await supabase
         .from("submissions")
         .select("*")
-        .or(
-          `student_id.eq.${currentStudentId},student_name.eq.${storedUser?.name}`
-        );
+        .eq("student_name", studentName);
 
-      const map = {};
-      (submissionData || []).forEach((s) => {
-        const isSubmitted =
-          !!s.answer_text ||
-          !!s.file_url ||
-          !!s.submitted_at ||
-          String(s.status || "").length > 0;
+      if (submissionsError) {
+        console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
+        setSubmissionMap({});
+      } else {
+        const map = {};
 
-        map[s.work_id] = {
-          ...s,
-          isSubmitted,
-          status: String(s.status || "").toLowerCase(),
-        };
-      });
+        (submissionsData || []).forEach((submission) => {
+          if (!submission?.work_id) return;
+          map[submission.work_id] = submission;
+        });
 
-      setSubmissionMap(map);
-    } catch (err) {
-      console.log("ERROR:", err);
+        setSubmissionMap(map);
+      }
+    } catch (error) {
+      console.log("UNEXPECTED FETCH DATA ERROR:", error);
+      setGroupedWorks({});
+      setSubmissionMap({});
     }
   }
 
-  function getWorkType(work) {
-    const t = String(work?.type || work?.work_type || "").toLowerCase();
-    if (t.includes("class")) return "Class Work";
+  function getWorkTypeLabel(work) {
+    const rawType = String(work?.type || work?.work_type || "")
+      .trim()
+      .toLowerCase();
+
+    if (rawType === "classwork" || rawType === "class work") {
+      return "Class Work";
+    }
+
     return "Homework";
   }
 
-  function openWork(id) {
-    window.location.href = `/student-work/${id}`;
+  function getSubmissionStatus(submission) {
+    if (!submission) return "Pending";
+
+    const isSubmitted = !!(
+      submission.answer_text ||
+      submission.file_url ||
+      submission.submitted_at
+    );
+
+    if (!isSubmitted) return "Pending";
+
+    const rawStatus = String(submission.status || "").trim().toLowerCase();
+
+    if (rawStatus === "checked") return "Checked";
+
+    return "Submitted";
   }
 
-  // ✅ CORRECT COUNTS
-  const allWorks = useMemo(() => Object.values(groupedWorks).flat(), [groupedWorks]);
+  function openWork(workId) {
+    if (!workId) return;
+    window.location.href = `/student-work/${workId}`;
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("erp_user");
+    window.location.href = "/login";
+  };
+
+  const allWorks = useMemo(() => {
+    return Object.values(groupedWorks).flat();
+  }, [groupedWorks]);
 
   const stats = useMemo(() => {
     let pending = 0;
@@ -121,15 +148,12 @@ export default function StudentDashboard() {
     let checked = 0;
 
     allWorks.forEach((work) => {
-      const sub = submissionMap[work.id];
+      const submission = submissionMap[work.id];
+      const status = getSubmissionStatus(submission);
 
-      if (!sub || !sub.isSubmitted) {
-        pending++;
-      } else if (sub.status === "checked") {
-        checked++;
-      } else {
-        submitted++;
-      }
+      if (status === "Pending") pending += 1;
+      if (status === "Submitted") submitted += 1;
+      if (status === "Checked") checked += 1;
     });
 
     return {
@@ -139,6 +163,14 @@ export default function StudentDashboard() {
       checked,
     };
   }, [allWorks, submissionMap]);
+
+  const homeworkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Homework"
+  ).length;
+
+  const classWorkCount = allWorks.filter(
+    (work) => getWorkTypeLabel(work) === "Class Work"
+  ).length;
 
   if (!isAllowed) return null;
 
@@ -151,8 +183,6 @@ export default function StudentDashboard() {
 
         <div className="flex-1 p-6">
           <div className="mx-auto max-w-5xl space-y-6">
-
-            {/* HEADER */}
             <div className="flex justify-between rounded-xl bg-white p-6 shadow">
               <div>
                 <h1 className="text-2xl font-bold">Student Dashboard</h1>
@@ -160,89 +190,164 @@ export default function StudentDashboard() {
               </div>
 
               <button
-                onClick={() => {
-                  localStorage.removeItem("erp_user");
-                  window.location.href = "/login";
-                }}
+                onClick={handleLogout}
                 className="rounded bg-red-500 px-4 py-2 text-white"
               >
                 Logout
               </button>
             </div>
 
-            {/* STATS */}
             <div className="grid grid-cols-5 gap-4">
-              <Card label="Total Work" value={stats.total} />
-              <Card label="Homework" value={allWorks.filter(w => getWorkType(w) === "Homework").length} blue />
-              <Card label="Class Work" value={allWorks.filter(w => getWorkType(w) === "Class Work").length} purple />
-              <Card label="Submitted" value={stats.submitted} green />
-              <Card label="Pending" value={stats.pending} red />
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Total Work</p>
+                <h2 className="mt-2 text-3xl font-bold">{stats.total}</h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Homework</p>
+                <h2 className="mt-2 text-3xl font-bold text-blue-600">
+                  {homeworkCount}
+                </h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Class Work</p>
+                <h2 className="mt-2 text-3xl font-bold text-purple-600">
+                  {classWorkCount}
+                </h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Submitted</p>
+                <h2 className="mt-2 text-3xl font-bold text-green-600">
+                  {stats.submitted}
+                </h2>
+              </div>
+
+              <div className="rounded bg-white p-4 shadow">
+                <p className="text-sm text-gray-500">Pending</p>
+                <h2 className="mt-2 text-3xl font-bold text-red-600">
+                  {stats.pending}
+                </h2>
+              </div>
             </div>
 
-            {/* WORK LIST */}
             <div className="rounded-xl bg-white p-6 shadow">
-              <h2 className="mb-4 text-lg font-semibold">Homework & Class Work</h2>
+              <h2 className="mb-4 text-lg font-semibold">
+                Homework & Class Work
+              </h2>
 
-              {allWorks.length === 0 ? (
-                <p>No work available</p>
+              {Object.keys(groupedWorks).length === 0 ? (
+                <p className="text-gray-500">No work available</p>
               ) : (
                 Object.keys(groupedWorks).map((subject) => (
                   <div key={subject} className="mb-6">
                     <h3 className="mb-2 font-bold text-blue-600">{subject}</h3>
 
-                    {groupedWorks[subject].map((work) => {
-                      const sub = submissionMap[work.id];
+                    <div className="space-y-3">
+                      {groupedWorks[subject].map((work) => {
+                        const submission = submissionMap[work.id];
+                        const typeLabel = getWorkTypeLabel(work);
+                        const status = getSubmissionStatus(submission);
+                        const isChecked = status === "Checked";
 
-                      const status = !sub
-                        ? "Pending"
-                        : sub.status === "checked"
-                        ? "Checked"
-                        : "Submitted";
-
-                      return (
-                        <div key={work.id} className="border p-3 rounded mb-3">
-                          <h4 className="font-semibold">{work.title}</h4>
-                          <p className="text-sm text-gray-600">
-                            {work.question || "-"}
-                          </p>
-
-                          <p className="text-sm mt-1">
-                            Status: <b>{status}</b>
-                          </p>
-
-                          <button
-                            onClick={() => openWork(work.id)}
-                            className="mt-2 px-3 py-1 rounded bg-blue-500 text-white"
+                        return (
+                          <div
+                            key={work.id}
+                            className="rounded border p-3 hover:bg-gray-50"
                           >
-                            {status === "Pending" ? "Submit" : "Open"}
-                          </button>
-                        </div>
-                      );
-                    })}
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h4 className="font-semibold">
+                                  {work.title || typeLabel}
+                                </h4>
+
+                                <p className="text-sm text-gray-600">
+                                  {work.question || work.description || "-"}
+                                </p>
+                              </div>
+
+                              <span
+                                className={`rounded px-3 py-1 text-xs font-semibold ${
+                                  typeLabel === "Class Work"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {typeLabel}
+                              </span>
+                            </div>
+
+                            {submission ? (
+                              <div className="mt-2 space-y-1 text-sm">
+                                <p>
+                                  <span className="font-medium">Status:</span>{" "}
+                                  {status}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Score:</span>{" "}
+                                  {submission.score ?? "-"}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Feedback:</span>{" "}
+                                  {submission.feedback || "-"}
+                                </p>
+                                <p>
+                                  <span className="font-medium">Attempt:</span>{" "}
+                                  {submission.attempt_no || 1}
+                                </p>
+
+                                {submission.mistake_reason ? (
+                                  <p className="text-red-600">
+                                    <span className="font-medium">Mistake:</span>{" "}
+                                    {submission.mistake_reason}
+                                  </p>
+                                ) : null}
+
+                                {submission.corrected_answer ? (
+                                  <p className="text-blue-600">
+                                    <span className="font-medium">
+                                      Correct Answer:
+                                    </span>{" "}
+                                    {submission.corrected_answer}
+                                  </p>
+                                ) : null}
+
+                                {!isChecked ? (
+                                  <button
+                                    onClick={() => openWork(work.id)}
+                                    className="mt-2 rounded bg-yellow-500 px-3 py-1 text-white"
+                                  >
+                                    Retry {typeLabel}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => openWork(work.id)}
+                                    className="mt-2 rounded bg-green-600 px-3 py-1 text-white"
+                                  >
+                                    View {typeLabel}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => openWork(work.id)}
+                                className="mt-2 rounded bg-blue-500 px-3 py-1 text-white"
+                              >
+                                Submit {typeLabel}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))
               )}
             </div>
-
           </div>
         </div>
       </div>
     </>
-  );
-}
-
-// Small reusable card
-function Card({ label, value, blue, purple, green, red }) {
-  let color = "";
-  if (blue) color = "text-blue-600";
-  if (purple) color = "text-purple-600";
-  if (green) color = "text-green-600";
-  if (red) color = "text-red-600";
-
-  return (
-    <div className="rounded bg-white p-4 shadow">
-      <p className="text-sm text-gray-500">{label}</p>
-      <h2 className={`mt-2 text-3xl font-bold ${color}`}>{value}</h2>
-    </div>
   );
 }

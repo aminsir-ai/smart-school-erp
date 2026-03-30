@@ -133,10 +133,10 @@ export default function StudentDashboard() {
     window.location.href = `/student-work/${workId}`;
   }
 
-  const handleLogout = () => {
+  function handleLogout() {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
-  };
+  }
 
   const allWorks = useMemo(() => {
     return Object.values(groupedWorks).flat();
@@ -151,9 +151,17 @@ export default function StudentDashboard() {
       const submission = submissionMap[work.id];
       const status = getSubmissionStatus(submission);
 
-      if (status === "Pending") pending += 1;
-      if (status === "Submitted") submitted += 1;
-      if (status === "Checked") checked += 1;
+      if (status === "Pending") {
+        pending += 1;
+      }
+
+      if (status === "Submitted" || status === "Checked") {
+        submitted += 1;
+      }
+
+      if (status === "Checked") {
+        checked += 1;
+      }
     });
 
     return {

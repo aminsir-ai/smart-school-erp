@@ -178,18 +178,7 @@ export default function TeacherSubmissionsPage() {
         return;
       }
 
-      setSubmissions((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                feedback: feedbackValue || null,
-                score: scoreValue,
-              }
-            : item
-        )
-      );
-
+      await fetchSubmissions();
       setPageMessage("Teacher review saved successfully.");
     } catch (error) {
       console.log("UNEXPECTED SAVE REVIEW ERROR:", error);
@@ -215,12 +204,7 @@ export default function TeacherSubmissionsPage() {
         return;
       }
 
-      setSubmissions((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, status: newStatus } : item
-        )
-      );
-
+      await fetchSubmissions();
       setPageMessage(`Submission marked as ${newStatus}.`);
     } catch (error) {
       console.log("UNEXPECTED STATUS UPDATE ERROR:", error);
@@ -230,8 +214,10 @@ export default function TeacherSubmissionsPage() {
     }
   }
 
-  async function saveReviewAndChangeStatus(id, newStatus) {
+  async function saveReviewAndChangeStatus(item, newStatus) {
     try {
+      const id = item.id;
+
       setSavingId(id);
       setUpdatingId(id);
       setPageMessage("");
@@ -261,23 +247,29 @@ export default function TeacherSubmissionsPage() {
         return;
       }
 
-      setSubmissions((prev) =>
-        prev.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                feedback: feedbackValue || null,
-                score: scoreValue,
-                status: newStatus,
-              }
-            : item
-        )
-      );
+      try {
+        await supabase.from("notifications").insert({
+          student_name: item.student_name,
+          teacher_name: teacherName,
+          message: "Your homework has been checked",
+          work_id: item.work_id,
+          subject_name: item.subject_name,
+          class_name: item.class_name,
+          work_title: item.work_title,
+          attempt_no: item.attempt_no || 1,
+          is_read: false,
+        });
+      } catch (notifError) {
+        console.log("NOTIFICATION ERROR:", notifError);
+      }
 
+      await fetchSubmissions();
       setPageMessage(`Review saved and submission marked as ${newStatus}.`);
     } catch (error) {
       console.log("UNEXPECTED SAVE AND STATUS UPDATE ERROR:", error);
-      setPageMessage("Something went wrong while saving review and updating status.");
+      setPageMessage(
+        "Something went wrong while saving review and updating status."
+      );
     } finally {
       setSavingId(null);
       setUpdatingId(null);
@@ -896,7 +888,7 @@ export default function TeacherSubmissionsPage() {
 
                           <button
                             onClick={() =>
-                              saveReviewAndChangeStatus(item.id, "Checked")
+                              saveReviewAndChangeStatus(item, "Checked")
                             }
                             disabled={isBusy}
                             style={{

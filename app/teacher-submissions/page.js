@@ -247,20 +247,28 @@ export default function TeacherSubmissionsPage() {
         return;
       }
 
-      try {
-        await supabase.from("notifications").insert({
-          student_name: item.student_name,
-          teacher_name: teacherName,
-          message: "Your homework has been checked",
-          work_id: item.work_id,
-          subject_name: item.subject_name,
-          class_name: item.class_name,
-          work_title: item.work_title,
-          attempt_no: item.attempt_no || 1,
-          is_read: false,
-        });
-      } catch (notifError) {
-        console.log("NOTIFICATION ERROR:", notifError);
+      if (newStatus === "Checked") {
+        try {
+          const safeWorkTitle = item.work_title || "Homework";
+          const message =
+            scoreValue === null
+              ? `Your homework "${safeWorkTitle}" has been checked.`
+              : `Your homework "${safeWorkTitle}" has been checked. Score: ${scoreValue}`;
+
+          await supabase.from("notifications").insert({
+            student_name: item.student_name,
+            teacher_name: teacherName,
+            message,
+            work_id: item.work_id,
+            subject_name: item.subject_name,
+            class_name: item.class_name,
+            work_title: item.work_title,
+            attempt_no: item.attempt_no || 1,
+            is_read: false,
+          });
+        } catch (notifError) {
+          console.log("NOTIFICATION ERROR:", notifError);
+        }
       }
 
       await fetchSubmissions();

@@ -46,6 +46,23 @@ export default function StudentDashboard() {
     fetchData();
   }, [isAllowed, className, studentName]);
 
+  function isSubmissionNewer(currentItem, nextItem) {
+    const currentAttempt = Number(currentItem?.attempt_no || 0);
+    const nextAttempt = Number(nextItem?.attempt_no || 0);
+
+    if (nextAttempt > currentAttempt) return true;
+    if (nextAttempt < currentAttempt) return false;
+
+    const currentTime = new Date(
+      currentItem?.submitted_at || currentItem?.created_at || 0
+    ).getTime();
+    const nextTime = new Date(
+      nextItem?.submitted_at || nextItem?.created_at || 0
+    ).getTime();
+
+    return nextTime > currentTime;
+  }
+
   async function fetchData() {
     try {
       const { data: worksData, error: worksError } = await supabase
@@ -76,7 +93,8 @@ export default function StudentDashboard() {
       const { data: submissionsData, error: submissionsError } = await supabase
         .from("submissions")
         .select("*")
-        .eq("student_name", studentName);
+        .eq("student_name", studentName)
+        .order("submitted_at", { ascending: false });
 
       if (submissionsError) {
         console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
@@ -86,7 +104,12 @@ export default function StudentDashboard() {
 
         (submissionsData || []).forEach((submission) => {
           if (!submission?.work_id) return;
-          map[submission.work_id] = submission;
+
+          const existing = map[submission.work_id];
+
+          if (!existing || isSubmissionNewer(existing, submission)) {
+            map[submission.work_id] = submission;
+          }
         });
 
         setSubmissionMap(map);

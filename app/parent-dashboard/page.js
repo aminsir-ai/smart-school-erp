@@ -320,111 +320,214 @@ export default function ParentDashboard() {
     };
   }, [submissionMap]);
 
+  function getGradeFromScore(score) {
+    const numericScore = Number(score);
+
+    if (Number.isNaN(numericScore)) return "-";
+    if (numericScore >= 90) return "A+";
+    if (numericScore >= 75) return "A";
+    if (numericScore >= 60) return "B";
+    if (numericScore >= 40) return "C";
+    return "D";
+  }
+
+  function getPerformanceLabel(score) {
+    const numericScore = Number(score);
+
+    if (Number.isNaN(numericScore)) {
+      return "No Score Available";
+    }
+
+    if (numericScore >= 90) return "GOLD TROPHY - STAR PERFORMER";
+    if (numericScore >= 75) return "EXCELLENT PERFORMANCE";
+    if (numericScore >= 60) return "GOOD PROGRESS";
+    if (numericScore >= 40) return "KEEP IMPROVING";
+    return "NEEDS SUPPORT";
+  }
+
+  function getRemarks(score) {
+    const numericScore = Number(score);
+
+    if (Number.isNaN(numericScore)) {
+      return "Not enough checked data available to generate full remarks.";
+    }
+
+    if (numericScore >= 90) {
+      return "Outstanding performance. Keep up the excellent effort and consistency.";
+    }
+
+    if (numericScore >= 75) {
+      return "Very good performance. The student is doing well and should continue the same effort.";
+    }
+
+    if (numericScore >= 60) {
+      return "Good progress. With a little more practice, the student can achieve even better results.";
+    }
+
+    if (numericScore >= 40) {
+      return "Average performance. More focus and regular revision are recommended.";
+    }
+
+    return "The student needs more support, practice, and close follow-up to improve performance.";
+  }
+
+  function addSectionTitle(doc, text, y) {
+    doc.setFillColor(37, 99, 235);
+    doc.roundedRect(14, y - 6, 182, 10, 2, 2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(text, 18, y);
+    doc.setTextColor(0, 0, 0);
+  }
+
+  function addLabelValue(doc, label, value, x, y) {
+    doc.setFont("helvetica", "bold");
+    doc.text(`${label}`, x, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${value}`, x + 38, y);
+  }
+
   function generatePDF() {
     const childName = student?.name || "-";
     const childClass = student?.class_name || student?.class || "-";
     const rollNo =
       student?.roll_no || student?.roll_number || student?.roll || "-";
 
+    const avgNumericScore =
+      insights.avgScore !== "-" ? Number(insights.avgScore) : NaN;
+
+    const grade = getGradeFromScore(avgNumericScore);
+    const performanceLabel = getPerformanceLabel(avgNumericScore);
+    const remarks = getRemarks(avgNumericScore);
+
     const doc = new jsPDF();
+    let y = 18;
 
-    let y = 20;
+    // Header
+    doc.setFillColor(30, 64, 175);
+    doc.rect(0, 0, 210, 30, "F");
 
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text("Student Report Card", 20, y);
+    doc.text("UNITED ENGLISH SCHOOL - MORBA", 105, 12, { align: "center" });
 
-    y += 12;
-    doc.setFontSize(12);
-    doc.text(`Parent: ${parentName}`, 20, y);
-
-    y += 8;
-    doc.text(`Student Name: ${childName}`, 20, y);
-
-    y += 8;
-    doc.text(`Class: ${childClass}`, 20, y);
-
-    y += 8;
-    doc.text(`Roll No: ${rollNo}`, 20, y);
-
-    y += 12;
     doc.setFontSize(14);
-    doc.text("Performance Summary", 20, y);
+    doc.text("STUDENT REPORT CARD", 105, 21, { align: "center" });
+
+    doc.setTextColor(0, 0, 0);
+
+    // Student info box
+    y = 40;
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, y, 182, 26, 3, 3, "FD");
+
+    addLabelValue(doc, "Parent:", parentName, 20, y + 8);
+    addLabelValue(doc, "Student:", childName, 105, y + 8);
+    addLabelValue(doc, "Class:", childClass, 20, y + 18);
+    addLabelValue(doc, "Roll No:", rollNo, 105, y + 18);
+
+    // Grade and trophy box
+    y = 74;
+    doc.setFillColor(254, 249, 195);
+    doc.roundedRect(14, y, 182, 22, 3, 3, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(`Grade: ${grade}`, 20, y + 9);
+
+    doc.setFontSize(12);
+    doc.text(`Performance: ${performanceLabel}`, 20, y + 18);
+
+    // Performance Summary
+    y = 108;
+    addSectionTitle(doc, "Performance Summary", y);
 
     y += 10;
-    doc.setFontSize(12);
-    doc.text(`Average Score: ${insights.avgScore}`, 20, y);
+    doc.setFillColor(240, 249, 255);
+    doc.roundedRect(14, y - 4, 88, 28, 3, 3, "FD");
+    doc.roundedRect(108, y - 4, 88, 28, 3, 3, "FD");
 
-    y += 8;
-    doc.text(`Best Subject: ${insights.bestSubject}`, 20, y);
+    addLabelValue(doc, "Avg Score:", insights.avgScore, 18, y + 4);
+    addLabelValue(doc, "Best Subject:", insights.bestSubject, 18, y + 14);
+    addLabelValue(doc, "Weak Subject:", insights.weakSubject, 112, y + 4);
+    addLabelValue(doc, "Attempts:", insights.totalAttempts, 112, y + 14);
 
-    y += 8;
-    doc.text(`Weak Subject: ${insights.weakSubject}`, 20, y);
+    y += 34;
+    doc.setFillColor(254, 242, 242);
+    doc.roundedRect(14, y - 4, 182, 14, 3, 3, "FD");
+    addLabelValue(doc, "Mistakes Count:", insights.totalMistakes, 18, y + 4);
 
-    y += 8;
-    doc.text(`Total Attempts: ${insights.totalAttempts}`, 20, y);
-
-    y += 8;
-    doc.text(`Mistakes Count: ${insights.totalMistakes}`, 20, y);
-
-    y += 12;
-    doc.setFontSize(14);
-    doc.text("Homework Summary", 20, y);
-
-    y += 10;
-    doc.setFontSize(12);
-    doc.text(`Total Homework: ${stats.total}`, 20, y);
-
-    y += 8;
-    doc.text(`Pending: ${stats.pending}`, 20, y);
-
-    y += 8;
-    doc.text(`Submitted: ${stats.submitted}`, 20, y);
-
-    y += 8;
-    doc.text(`Checked: ${stats.checked}`, 20, y);
-
-    y += 12;
-    doc.setFontSize(14);
-    doc.text("Latest Checked Result", 20, y);
+    // Homework Summary
+    y += 20;
+    addSectionTitle(doc, "Homework Summary", y);
 
     y += 10;
-    doc.setFontSize(12);
+    doc.setFillColor(240, 253, 244);
+    doc.roundedRect(14, y - 4, 182, 24, 3, 3, "FD");
+
+    addLabelValue(doc, "Total Homework:", stats.total, 18, y + 4);
+    addLabelValue(doc, "Pending:", stats.pending, 112, y + 4);
+    addLabelValue(doc, "Submitted:", stats.submitted, 18, y + 14);
+    addLabelValue(doc, "Checked:", stats.checked, 112, y + 14);
+
+    // Latest Result
+    y += 30;
+    addSectionTitle(doc, "Latest Checked Result", y);
+
+    y += 10;
+    doc.setFillColor(245, 243, 255);
+    doc.roundedRect(14, y - 4, 182, 26, 3, 3, "FD");
 
     if (latestCheckedSubmission) {
-      doc.text(
-        `Latest Score: ${latestCheckedSubmission.score ?? "-"}`,
-        20,
-        y
+      addLabelValue(
+        doc,
+        "Latest Score:",
+        latestCheckedSubmission.score ?? "-",
+        18,
+        y + 4
+      );
+      addLabelValue(
+        doc,
+        "Attempt:",
+        latestCheckedSubmission.attempt_no || 1,
+        112,
+        y + 4
       );
 
-      y += 8;
-      doc.text(
-        `Attempt: ${latestCheckedSubmission.attempt_no || 1}`,
-        20,
-        y
-      );
-
-      y += 8;
-      const latestFeedback = String(
-        latestCheckedSubmission.feedback || "-"
-      );
+      const latestFeedback = String(latestCheckedSubmission.feedback || "-");
       const feedbackLines = doc.splitTextToSize(
         `Feedback: ${latestFeedback}`,
-        170
+        165
       );
-      doc.text(feedbackLines, 20, y);
-      y += feedbackLines.length * 6;
+      doc.setFont("helvetica", "bold");
+      doc.text("Feedback:", 18, y + 14);
+      doc.setFont("helvetica", "normal");
+      doc.text(feedbackLines, 42, y + 14);
+      y += Math.max(22, feedbackLines.length * 6 + 8);
     } else {
-      doc.text("No checked result yet.", 20, y);
-      y += 8;
+      doc.setFont("helvetica", "normal");
+      doc.text("No checked result yet.", 18, y + 8);
+      y += 20;
     }
 
-    y += 8;
-    doc.setFontSize(14);
-    doc.text("Subject-wise Homework History", 20, y);
-
+    // Remarks
+    addSectionTitle(doc, "Teacher-Style Remarks", y);
     y += 10;
-    doc.setFontSize(11);
+    doc.setFillColor(255, 251, 235);
+    doc.roundedRect(14, y - 4, 182, 24, 3, 3, "FD");
+
+    const remarkLines = doc.splitTextToSize(remarks, 170);
+    doc.setFont("helvetica", "normal");
+    doc.text(remarkLines, 18, y + 4);
+    y += Math.max(20, remarkLines.length * 6 + 6);
+
+    // Subject-wise history
+    y += 6;
+    addSectionTitle(doc, "Subject-wise Homework History", y);
+    y += 10;
 
     Object.keys(groupedWorks).forEach((subject) => {
       if (y > 260) {
@@ -432,12 +535,15 @@ export default function ParentDashboard() {
         y = 20;
       }
 
-      doc.setFontSize(12);
-      doc.text(`${subject}`, 20, y);
-      y += 8;
+      doc.setFillColor(219, 234, 254);
+      doc.roundedRect(14, y - 4, 182, 8, 2, 2, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text(subject, 18, y + 1);
+      y += 10;
 
       groupedWorks[subject].forEach((work) => {
-        if (y > 270) {
+        if (y > 265) {
           doc.addPage();
           y = 20;
         }
@@ -445,37 +551,38 @@ export default function ParentDashboard() {
         const submission = submissionMap[work.id];
         const status = getSubmissionStatus(submission);
 
-        doc.setFontSize(11);
+        doc.setFillColor(250, 250, 250);
+        doc.roundedRect(14, y - 4, 182, 28, 2, 2, "FD");
 
         const title = String(work.title || work.work_title || "-");
-        const titleLines = doc.splitTextToSize(`Work: ${title}`, 170);
-        doc.text(titleLines, 20, y);
-        y += titleLines.length * 6;
-
-        doc.text(`Status: ${status}`, 20, y);
-        y += 6;
-
-        doc.text(`Score: ${submission?.score ?? "-"}`, 20, y);
-        y += 6;
-
-        doc.text(`Attempt: ${submission?.attempt_no || "-"}`, 20, y);
-        y += 6;
-
         const feedback = String(submission?.feedback || "-");
-        const feedbackLines = doc.splitTextToSize(
-          `Feedback: ${feedback}`,
-          170
-        );
-        doc.text(feedbackLines, 20, y);
-        y += feedbackLines.length * 6;
+
+        const titleLines = doc.splitTextToSize(`Work: ${title}`, 170);
+        const feedbackLines = doc.splitTextToSize(`Feedback: ${feedback}`, 170);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text(titleLines, 18, y + 2);
+
+        let localY = y + 8 + titleLines.length * 4;
+
+        doc.setFont("helvetica", "normal");
+        doc.text(`Status: ${status}`, 18, localY);
+        doc.text(`Score: ${submission?.score ?? "-"}`, 70, localY);
+        doc.text(`Attempt: ${submission?.attempt_no || "-"}`, 115, localY);
+
+        localY += 6;
+        doc.text(feedbackLines, 18, localY);
+
+        localY += feedbackLines.length * 5;
 
         if (submission?.mistake_reason) {
           const mistakeLines = doc.splitTextToSize(
             `Mistake: ${submission.mistake_reason}`,
             170
           );
-          doc.text(mistakeLines, 20, y);
-          y += mistakeLines.length * 6;
+          doc.text(mistakeLines, 18, localY);
+          localY += mistakeLines.length * 5;
         }
 
         if (submission?.corrected_answer) {
@@ -483,17 +590,17 @@ export default function ParentDashboard() {
             `Correct Answer: ${submission.corrected_answer}`,
             170
           );
-          doc.text(correctedLines, 20, y);
-          y += correctedLines.length * 6;
+          doc.text(correctedLines, 18, localY);
+          localY += correctedLines.length * 5;
         }
 
-        y += 4;
+        y = localY + 6;
       });
 
-      y += 4;
+      y += 2;
     });
 
-    doc.save(`${childName}_report_card.pdf`);
+    doc.save(`${childName}_colorful_report_card.pdf`);
   }
 
   if (!isAllowed) return null;

@@ -7,13 +7,14 @@ import Sidebar from "@/app/components/Sidebar";
 
 export default function TeacherDashboard() {
   const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const [stats, setStats] = useState({
     totalWorks: 0,
     totalSubmissions: 0,
-    averageScore: 0,
+    averageScore: "0.0",
     pendingWork: 0,
   });
 
@@ -43,9 +44,14 @@ export default function TeacherDashboard() {
       return;
     }
 
-    setTeacherName(user?.name || "Teacher");
+    const currentTeacherName = user?.name || "Teacher";
+    const currentTeacherId = String(user?.id || "");
+
+    setTeacherName(currentTeacherName);
+    setTeacherId(currentTeacherId);
     setIsAllowed(true);
-    fetchTeacherDashboardData();
+
+    fetchTeacherDashboardData(currentTeacherId, currentTeacherName);
   }, []);
 
   const getClassValue = (item) => {
@@ -60,41 +66,81 @@ export default function TeacherDashboard() {
   };
 
   const getSubjectValue = (item) => {
-    return item?.subject || item?.subject_name || "-";
+    return item?.subject_name || item?.subject || "-";
   };
 
   const getTitleValue = (item) => {
     return item?.title || item?.homework_title || item?.name || "Untitled Homework";
   };
 
-  const fetchTeacherDashboardData = async () => {
+  const fetchTeacherDashboardData = async (currentTeacherId, currentTeacherName) => {
     setIsLoading(true);
 
     try {
-      const [
-        worksResponse,
-        submissionsResponse,
-        studentsResponse,
-      ] = await Promise.all([
-        supabase.from("works").select("*"),
+      const worksQueryById = currentTeacherId
+        ? supabase
+            .from("works")
+            .select("*")
+            .eq("teacher_id", currentTeacherId)
+            .order("created_at", { ascending: false })
+        : null;
+
+      let worksData = [];
+      let worksError = null;
+
+      if (worksQueryById) {
+        const worksResponseById = await worksQueryById;
+        worksData = worksResponseById?.data || [];
+        worksError = worksResponseById?.error || null;
+      }
+
+      if ((!worksData || worksData.length === 0) && currentTeacherName) {
+        const worksResponseByName = await supabase
+          .from("works")
+          .select("*")
+          .eq("teacher_name", currentTeacherName)
+          .order("created_at", { ascending: false });
+
+        worksData = worksResponseByName?.data || [];
+        worksError = worksResponseByName?.error || worksError;
+      }
+
+      if (worksError) {
+        console.log("FETCH TEACHER WORKS ERROR:", worksError);
+      }
+
+      const [submissionsResponse, studentsResponse] = await Promise.all([
         supabase.from("submissions").select("*"),
         supabase.from("students").select("*"),
       ]);
 
-      const worksData = worksResponse?.data || [];
       const submissionsData = submissionsResponse?.data || [];
       const studentsData = studentsResponse?.data || [];
 
+      const teacherWorkIds = new Set(
+        (worksData || []).map((work) => String(work?.id || "")).filter(Boolean)
+      );
+
+      const teacherSubmissions = submissionsData.filter((submission) =>
+        teacherWorkIds.has(String(submission?.work_id || ""))
+      );
+
       const worksCount = worksData.length;
-      const submissionsCount = submissionsData.length;
+      const submissionsCount = teacherSubmissions.length;
 
       let avgScore = 0;
-      if (submissionsData.length > 0) {
-        const totalScore = submissionsData.reduce(
-          (sum, item) => sum + Number(item?.score || 0),
-          0
+      if (teacherSubmissions.length > 0) {
+        const scoredSubmissions = teacherSubmissions.filter(
+          (item) => item?.score !== null && item?.score !== undefined && item?.score !== ""
         );
-        avgScore = totalScore / submissionsData.length;
+
+        if (scoredSubmissions.length > 0) {
+          const totalScore = scoredSubmissions.reduce(
+            (sum, item) => sum + Number(item?.score || 0),
+            0
+          );
+          avgScore = totalScore / scoredSubmissions.length;
+        }
       }
 
       const rows = worksData.map((work) => {
@@ -104,11 +150,12 @@ export default function TeacherDashboard() {
         const title = getTitleValue(work);
 
         const studentsInClass = studentsData.filter((student) => {
-          return String(student?.class_name || "").trim() === String(className).trim();
+          const studentClass = String(student?.class_name || student?.class || "").trim();
+          return studentClass === String(className).trim();
         });
 
-        const matchedSubmissions = submissionsData.filter((submission) => {
-          return String(submission?.work_id) === String(workId);
+        const matchedSubmissions = teacherSubmissions.filter((submission) => {
+          return String(submission?.work_id || "") === String(workId || "");
         });
 
         const totalStudents = studentsInClass.length;
@@ -144,7 +191,7 @@ export default function TeacherDashboard() {
       setStats({
         totalWorks: 0,
         totalSubmissions: 0,
-        averageScore: 0,
+        averageScore: "0.0",
         pendingWork: 0,
       });
       setTrackingRows([]);

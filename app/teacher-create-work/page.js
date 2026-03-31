@@ -7,6 +7,7 @@ import Sidebar from "@/app/components/Sidebar";
 
 export default function TeacherCreateWorkPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
 
   const [type, setType] = useState("homework");
@@ -21,7 +22,6 @@ export default function TeacherCreateWorkPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🔐 Route protection
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
 
@@ -47,10 +47,10 @@ export default function TeacherCreateWorkPage() {
     }
 
     setTeacherName(user?.name || "Teacher");
+    setTeacherId(String(user?.id || ""));
     setIsAllowed(true);
   }, []);
 
-  // 🔥 Fetch subjects
   useEffect(() => {
     if (!isAllowed) return;
 
@@ -82,6 +82,11 @@ export default function TeacherCreateWorkPage() {
       return;
     }
 
+    if (!teacherName.trim() || !teacherId.trim()) {
+      setMessage("Teacher details missing. Please login again.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -94,6 +99,8 @@ export default function TeacherCreateWorkPage() {
       model_answer: modelAnswer.trim(),
       keywords: keywords.trim(),
       due_date: dueDate || null,
+      teacher_name: teacherName,
+      teacher_id: teacherId,
     };
 
     const { error } = await supabase.from("works").insert([payload]);
@@ -137,8 +144,6 @@ export default function TeacherCreateWorkPage() {
 
         <div className="flex-1 p-6">
           <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow">
-
-            {/* Header + Logout */}
             <div className="mb-6 flex items-center justify-between">
               <h1 className="text-3xl font-bold">Teacher - Create Work</h1>
 
@@ -150,7 +155,6 @@ export default function TeacherCreateWorkPage() {
               </button>
             </div>
 
-            {/* Class */}
             <div className="mb-4">
               <label className="mb-2 block font-medium">Class</label>
               <select
@@ -158,13 +162,16 @@ export default function TeacherCreateWorkPage() {
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
               >
-                {["3rd","4th","5th","6th","7th","8th","9th","10th"].map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
+                {["3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"].map(
+                  (c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
-            {/* Subject */}
             <div className="mb-4">
               <label className="mb-2 block font-medium">Subject</label>
               <select
@@ -176,7 +183,7 @@ export default function TeacherCreateWorkPage() {
                   <option>No subjects</option>
                 ) : (
                   subjects.map((s) => (
-                    <option key={s.subject_name}>
+                    <option key={s.subject_name} value={s.subject_name}>
                       {s.subject_name}
                     </option>
                   ))
@@ -184,7 +191,6 @@ export default function TeacherCreateWorkPage() {
               </select>
             </div>
 
-            {/* Type */}
             <div className="mb-4">
               <label className="mb-2 block font-medium">Type</label>
               <select
@@ -197,7 +203,6 @@ export default function TeacherCreateWorkPage() {
               </select>
             </div>
 
-            {/* Title */}
             <div className="mb-4">
               <input
                 placeholder="Title"
@@ -207,7 +212,6 @@ export default function TeacherCreateWorkPage() {
               />
             </div>
 
-            {/* Question */}
             <div className="mb-4">
               <textarea
                 rows={4}
@@ -218,7 +222,6 @@ export default function TeacherCreateWorkPage() {
               />
             </div>
 
-            {/* Model Answer */}
             <div className="mb-4">
               <textarea
                 rows={4}
@@ -229,7 +232,6 @@ export default function TeacherCreateWorkPage() {
               />
             </div>
 
-            {/* Keywords */}
             <div className="mb-4">
               <input
                 placeholder="Keywords (comma separated)"
@@ -239,7 +241,6 @@ export default function TeacherCreateWorkPage() {
               />
             </div>
 
-            {/* Due Date */}
             <div className="mb-5">
               <input
                 type="date"
@@ -257,9 +258,9 @@ export default function TeacherCreateWorkPage() {
               {loading ? "Creating..." : "Create Work"}
             </button>
 
-            {message && (
+            {message ? (
               <p className="mt-4 text-sm text-gray-700">{message}</p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

@@ -11,11 +11,12 @@ export default function ParentDashboard() {
   const [studentId, setStudentId] = useState(null);
 
   const [student, setStudent] = useState(null);
-  const [groupedWorks, setGroupedWorks] = useState({});
-  const [submissionMap, setSubmissionMap] = useState({});
+  const [rawWorks, setRawWorks] = useState([]);
+  const [rawSubmissions, setRawSubmissions] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [monthFilter, setMonthFilter] = useState("All");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -69,6 +70,33 @@ export default function ParentDashboard() {
     return nextTime > currentTime;
   }
 
+  function getMonthKey(dateValue) {
+    if (!dateValue) return "";
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`;
+  }
+
+  function getMonthLabel(monthKey) {
+    if (!monthKey || monthKey === "All") return "All Months";
+    const [year, month] = monthKey.split("-");
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    return date.toLocaleString("en-IN", {
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  function getWorkDate(work) {
+    return work?.due_date || work?.created_at || null;
+  }
+
+  function getSubmissionDate(submission) {
+    return submission?.submitted_at || submission?.created_at || null;
+  }
+
   async function fetchData() {
     setLoading(true);
 
@@ -82,8 +110,8 @@ export default function ParentDashboard() {
       if (studentError || !studentData) {
         console.log("FETCH STUDENT ERROR:", studentError);
         setStudent(null);
-        setGroupedWorks({});
-        setSubmissionMap({});
+        setRawWorks([]);
+        setRawSubmissions([]);
         setNotifications([]);
         setLoading(false);
         return;
@@ -102,21 +130,9 @@ export default function ParentDashboard() {
 
       if (worksError) {
         console.log("FETCH WORKS ERROR:", worksError);
-        setGroupedWorks({});
+        setRawWorks([]);
       } else {
-        const grouped = {};
-
-        (worksData || []).forEach((work) => {
-          const subject = work.subject_name || work.subject || "Other";
-
-          if (!grouped[subject]) {
-            grouped[subject] = [];
-          }
-
-          grouped[subject].push(work);
-        });
-
-        setGroupedWorks(grouped);
+        setRawWorks(worksData || []);
       }
 
       const { data: submissionsData, error: submissionsError } = await supabase
@@ -127,21 +143,9 @@ export default function ParentDashboard() {
 
       if (submissionsError) {
         console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
-        setSubmissionMap({});
+        setRawSubmissions([]);
       } else {
-        const map = {};
-
-        (submissionsData || []).forEach((submission) => {
-          if (!submission?.work_id) return;
-
-          const existing = map[submission.work_id];
-
-          if (!existing || isSubmissionNewer(existing, submission)) {
-            map[submission.work_id] = submission;
-          }
-        });
-
-        setSubmissionMap(map);
+        setRawSubmissions(submissionsData || []);
       }
 
       const { data: notificationsData, error: notificationsError } =
@@ -161,8 +165,8 @@ export default function ParentDashboard() {
     } catch (error) {
       console.log("PARENT DASHBOARD ERROR:", error);
       setStudent(null);
-      setGroupedWorks({});
-      setSubmissionMap({});
+      setRawWorks([]);
+      setRawSubmissions([]);
       setNotifications([]);
     } finally {
       setLoading(false);
@@ -196,6 +200,75 @@ export default function ParentDashboard() {
     localStorage.removeItem("erp_user");
     window.location.href = "/login";
   }
+
+  const monthOptions = useMemo(() => {
+    const keys = new Set();
+
+    rawWorks.forEach((work) => {
+      const key = getMonthKey(getWorkDate(work));
+      if (key) keys.add(key);
+    });
+
+    rawSubmissions.forEach((submission) => {
+      const key = getMonthKey(getSubmissionDate(submission));
+      if (key) keys.add(key);
+    });
+
+    return [
+      "All",
+      ...Array.from(keys).sort((a, b) => (a < b ? 1 : -1)),
+    ];
+  }, [rawWorks, rawSubmissions]);
+
+  const filteredWorks = useMemo(() => {
+    if (monthFilter === "All") return rawWorks;
+
+    return rawWorks.filter((work) => {
+      const key = getMonthKey(getWorkDate(work));
+      return key === monthFilter;
+    });
+  }, [rawWorks, monthFilter]);
+
+  const filteredSubmissions = useMemo(() => {
+    if (monthFilter === "All") return rawSubmissions;
+
+    return rawSubmissions.filter((submission) => {
+      const key = getMonthKey(getSubmissionDate(submission));
+      return key === monthFilter;
+    });
+  }, [rawSubmissions, monthFilter]);
+
+  const groupedWorks = useMemo(() => {
+    const grouped = {};
+
+    filteredWorks.forEach((work) => {
+      const subject = work.subject_name || work.subject || "Other";
+
+      if (!grouped[subject]) {
+        grouped[subject] = [];
+      }
+
+      grouped[subject].push(work);
+    });
+
+    return grouped;
+  }, [filteredWorks]);
+
+  const submissionMap = useMemo(() => {
+    const map = {};
+
+    filteredSubmissions.forEach((submission) => {
+      if (!submission?.work_id) return;
+
+      const existing = map[submission.work_id];
+
+      if (!existing || isSubmissionNewer(existing, submission)) {
+        map[submission.work_id] = submission;
+      }
+    });
+
+    return map;
+  }, [filteredSubmissions]);
 
   const allWorks = useMemo(() => {
     return Object.values(groupedWorks).flat();
@@ -320,6 +393,27 @@ export default function ParentDashboard() {
     };
   }, [submissionMap]);
 
+  const marksTableRows = useMemo(() => {
+    return allWorks.map((work) => {
+      const submission = submissionMap[work.id];
+      const score = submission?.score ?? "-";
+      const numericScore =
+        score !== "-" && score !== null && score !== undefined && score !== ""
+          ? Number(score)
+          : NaN;
+
+      return {
+        id: work.id,
+        subject: work.subject_name || work.subject || "Other",
+        title: work.title || work.work_title || "-",
+        status: getSubmissionStatus(submission),
+        score,
+        grade: getGradeFromScore(numericScore),
+        attempt: submission?.attempt_no || "-",
+      };
+    });
+  }, [allWorks, submissionMap]);
+
   function getGradeFromScore(score) {
     const numericScore = Number(score);
 
@@ -401,10 +495,8 @@ export default function ParentDashboard() {
           return;
         }
 
-        // white background to avoid black box in PDF
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         ctx.drawImage(img, 0, 0);
 
         resolve(canvas.toDataURL("image/jpeg", 0.95));
@@ -430,6 +522,7 @@ export default function ParentDashboard() {
     const grade = getGradeFromScore(avgNumericScore);
     const performanceLabel = getPerformanceLabel(avgNumericScore);
     const remarks = getRemarks(avgNumericScore);
+    const selectedMonthLabel = getMonthLabel(monthFilter);
 
     const doc = new jsPDF();
     const logoData = await loadImageAsDataURL("/school-logo.png");
@@ -470,15 +563,16 @@ export default function ParentDashboard() {
     y = 42;
     doc.setDrawColor(200, 200, 200);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, y, 182, 26, 3, 3, "FD");
+    doc.roundedRect(14, y, 182, 32, 3, 3, "FD");
 
     addLabelValue(doc, "Parent:", parentName, 20, y + 8);
     addLabelValue(doc, "Student:", childName, 105, y + 8);
     addLabelValue(doc, "Class:", childClass, 20, y + 18);
     addLabelValue(doc, "Roll No:", rollNo, 105, y + 18);
+    addLabelValue(doc, "Month:", selectedMonthLabel, 20, y + 28);
 
     // Grade and performance
-    y = 76;
+    y = 84;
     doc.setFillColor(254, 249, 195);
     doc.roundedRect(14, y, 182, 22, 3, 3, "FD");
 
@@ -490,7 +584,7 @@ export default function ParentDashboard() {
     doc.text(`Performance: ${performanceLabel}`, 20, y + 18);
 
     // Performance Summary
-    y = 110;
+    y = 118;
     addSectionTitle(doc, "Performance Summary", y);
 
     y += 10;
@@ -572,8 +666,73 @@ export default function ParentDashboard() {
     doc.text(remarkLines, 18, y + 4);
     y += Math.max(20, remarkLines.length * 6 + 6);
 
-    // Subject-wise history
+    // Marks table
     y += 6;
+    addSectionTitle(doc, "Marks Table", y);
+    y += 10;
+
+    doc.setFillColor(219, 234, 254);
+    doc.rect(14, y - 4, 182, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("Subject", 16, y + 1);
+    doc.text("Work", 42, y + 1);
+    doc.text("Status", 110, y + 1);
+    doc.text("Score", 136, y + 1);
+    doc.text("Grade", 156, y + 1);
+    doc.text("Attempt", 176, y + 1);
+
+    y += 8;
+
+    if (marksTableRows.length === 0) {
+      doc.setFont("helvetica", "normal");
+      doc.text("No marks data available for the selected month.", 16, y + 2);
+      y += 10;
+    } else {
+      marksTableRows.forEach((row) => {
+        if (y > 265) {
+          doc.addPage();
+          y = 20;
+
+          doc.setFillColor(219, 234, 254);
+          doc.rect(14, y - 4, 182, 8, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.text("Subject", 16, y + 1);
+          doc.text("Work", 42, y + 1);
+          doc.text("Status", 110, y + 1);
+          doc.text("Score", 136, y + 1);
+          doc.text("Grade", 156, y + 1);
+          doc.text("Attempt", 176, y + 1);
+          y += 8;
+        }
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+
+        const workTitle = String(row.title || "-");
+        const workLines = doc.splitTextToSize(workTitle, 60);
+        const rowHeight = Math.max(8, workLines.length * 4 + 2);
+
+        doc.rect(14, y - 3, 182, rowHeight);
+        doc.text(String(row.subject || "-"), 16, y + 1);
+        doc.text(workLines, 42, y + 1);
+        doc.text(String(row.status || "-"), 110, y + 1);
+        doc.text(String(row.score ?? "-"), 136, y + 1);
+        doc.text(String(row.grade || "-"), 156, y + 1);
+        doc.text(String(row.attempt || "-"), 176, y + 1);
+
+        y += rowHeight;
+      });
+    }
+
+    // Subject-wise history
+    y += 8;
+    if (y > 245) {
+      doc.addPage();
+      y = 20;
+    }
+
     addSectionTitle(doc, "Subject-wise Homework History", y);
     y += 10;
 
@@ -687,7 +846,7 @@ export default function ParentDashboard() {
       { align: "center" }
     );
 
-    doc.save(`${childName}_colorful_report_card.pdf`);
+    doc.save(`${childName}_monthly_report_card.pdf`);
   }
 
   if (!isAllowed) return null;
@@ -715,6 +874,18 @@ export default function ParentDashboard() {
               </div>
 
               <div className="flex flex-wrap gap-3">
+                <select
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {monthOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {getMonthLabel(item)}
+                    </option>
+                  ))}
+                </select>
+
                 <button
                   onClick={generatePDF}
                   className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
@@ -771,6 +942,70 @@ export default function ParentDashboard() {
                   {stats.checked}
                 </h2>
               </div>
+            </div>
+
+            <div className="rounded-xl bg-white p-6 shadow">
+              <h2 className="mb-4 text-lg font-semibold">Marks Table</h2>
+
+              {loading ? (
+                <p className="text-gray-500">Loading...</p>
+              ) : marksTableRows.length === 0 ? (
+                <p className="text-gray-500">
+                  No marks data available for selected month.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Subject
+                        </th>
+                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                          Work Title
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Status
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Score
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Grade
+                        </th>
+                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
+                          Attempt
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {marksTableRows.map((row) => (
+                        <tr key={row.id} className="hover:bg-gray-50">
+                          <td className="border-b px-4 py-3 text-sm text-gray-800">
+                            {row.subject}
+                          </td>
+                          <td className="border-b px-4 py-3 text-sm font-medium text-gray-900">
+                            {row.title}
+                          </td>
+                          <td className="border-b px-4 py-3 text-center text-sm text-gray-800">
+                            {row.status}
+                          </td>
+                          <td className="border-b px-4 py-3 text-center text-sm text-gray-800">
+                            {row.score}
+                          </td>
+                          <td className="border-b px-4 py-3 text-center text-sm font-semibold text-blue-600">
+                            {row.grade}
+                          </td>
+                          <td className="border-b px-4 py-3 text-center text-sm text-gray-800">
+                            {row.attempt}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -319,6 +320,182 @@ export default function ParentDashboard() {
     };
   }, [submissionMap]);
 
+  function generatePDF() {
+    const childName = student?.name || "-";
+    const childClass = student?.class_name || student?.class || "-";
+    const rollNo =
+      student?.roll_no || student?.roll_number || student?.roll || "-";
+
+    const doc = new jsPDF();
+
+    let y = 20;
+
+    doc.setFontSize(18);
+    doc.text("Student Report Card", 20, y);
+
+    y += 12;
+    doc.setFontSize(12);
+    doc.text(`Parent: ${parentName}`, 20, y);
+
+    y += 8;
+    doc.text(`Student Name: ${childName}`, 20, y);
+
+    y += 8;
+    doc.text(`Class: ${childClass}`, 20, y);
+
+    y += 8;
+    doc.text(`Roll No: ${rollNo}`, 20, y);
+
+    y += 12;
+    doc.setFontSize(14);
+    doc.text("Performance Summary", 20, y);
+
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Average Score: ${insights.avgScore}`, 20, y);
+
+    y += 8;
+    doc.text(`Best Subject: ${insights.bestSubject}`, 20, y);
+
+    y += 8;
+    doc.text(`Weak Subject: ${insights.weakSubject}`, 20, y);
+
+    y += 8;
+    doc.text(`Total Attempts: ${insights.totalAttempts}`, 20, y);
+
+    y += 8;
+    doc.text(`Mistakes Count: ${insights.totalMistakes}`, 20, y);
+
+    y += 12;
+    doc.setFontSize(14);
+    doc.text("Homework Summary", 20, y);
+
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Total Homework: ${stats.total}`, 20, y);
+
+    y += 8;
+    doc.text(`Pending: ${stats.pending}`, 20, y);
+
+    y += 8;
+    doc.text(`Submitted: ${stats.submitted}`, 20, y);
+
+    y += 8;
+    doc.text(`Checked: ${stats.checked}`, 20, y);
+
+    y += 12;
+    doc.setFontSize(14);
+    doc.text("Latest Checked Result", 20, y);
+
+    y += 10;
+    doc.setFontSize(12);
+
+    if (latestCheckedSubmission) {
+      doc.text(
+        `Latest Score: ${latestCheckedSubmission.score ?? "-"}`,
+        20,
+        y
+      );
+
+      y += 8;
+      doc.text(
+        `Attempt: ${latestCheckedSubmission.attempt_no || 1}`,
+        20,
+        y
+      );
+
+      y += 8;
+      const latestFeedback = String(
+        latestCheckedSubmission.feedback || "-"
+      );
+      const feedbackLines = doc.splitTextToSize(
+        `Feedback: ${latestFeedback}`,
+        170
+      );
+      doc.text(feedbackLines, 20, y);
+      y += feedbackLines.length * 6;
+    } else {
+      doc.text("No checked result yet.", 20, y);
+      y += 8;
+    }
+
+    y += 8;
+    doc.setFontSize(14);
+    doc.text("Subject-wise Homework History", 20, y);
+
+    y += 10;
+    doc.setFontSize(11);
+
+    Object.keys(groupedWorks).forEach((subject) => {
+      if (y > 260) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.text(`${subject}`, 20, y);
+      y += 8;
+
+      groupedWorks[subject].forEach((work) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+
+        const submission = submissionMap[work.id];
+        const status = getSubmissionStatus(submission);
+
+        doc.setFontSize(11);
+
+        const title = String(work.title || work.work_title || "-");
+        const titleLines = doc.splitTextToSize(`Work: ${title}`, 170);
+        doc.text(titleLines, 20, y);
+        y += titleLines.length * 6;
+
+        doc.text(`Status: ${status}`, 20, y);
+        y += 6;
+
+        doc.text(`Score: ${submission?.score ?? "-"}`, 20, y);
+        y += 6;
+
+        doc.text(`Attempt: ${submission?.attempt_no || "-"}`, 20, y);
+        y += 6;
+
+        const feedback = String(submission?.feedback || "-");
+        const feedbackLines = doc.splitTextToSize(
+          `Feedback: ${feedback}`,
+          170
+        );
+        doc.text(feedbackLines, 20, y);
+        y += feedbackLines.length * 6;
+
+        if (submission?.mistake_reason) {
+          const mistakeLines = doc.splitTextToSize(
+            `Mistake: ${submission.mistake_reason}`,
+            170
+          );
+          doc.text(mistakeLines, 20, y);
+          y += mistakeLines.length * 6;
+        }
+
+        if (submission?.corrected_answer) {
+          const correctedLines = doc.splitTextToSize(
+            `Correct Answer: ${submission.corrected_answer}`,
+            170
+          );
+          doc.text(correctedLines, 20, y);
+          y += correctedLines.length * 6;
+        }
+
+        y += 4;
+      });
+
+      y += 4;
+    });
+
+    doc.save(`${childName}_report_card.pdf`);
+  }
+
   if (!isAllowed) return null;
 
   const childName = student?.name || "-";
@@ -335,7 +512,7 @@ export default function ParentDashboard() {
 
         <div className="flex-1 p-6">
           <div className="mx-auto max-w-6xl space-y-6">
-            <div className="flex justify-between rounded-xl bg-white p-6 shadow">
+            <div className="flex flex-col gap-4 rounded-xl bg-white p-6 shadow md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-2xl font-bold">Parent Dashboard</h1>
                 <p className="text-sm text-gray-500">
@@ -343,12 +520,21 @@ export default function ParentDashboard() {
                 </p>
               </div>
 
-              <button
-                onClick={handleLogout}
-                className="rounded bg-red-500 px-4 py-2 text-white"
-              >
-                Logout
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={generatePDF}
+                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                >
+                  Download Report Card
+                </button>
+
+                <button
+                  onClick={handleLogout}
+                  className="rounded bg-red-500 px-4 py-2 text-white"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 md:grid-cols-5">

@@ -25,16 +25,7 @@ export default function TeacherStudentProgressPage() {
       return;
     }
 
-    let user = null;
-
-    try {
-      user = JSON.parse(storedUser);
-    } catch (error) {
-      console.log("USER PARSE ERROR:", error);
-      localStorage.removeItem("erp_user");
-      window.location.href = "/login";
-      return;
-    }
+    let user = JSON.parse(storedUser);
 
     if (!user || user.role !== "teacher") {
       window.location.href = "/login";
@@ -58,176 +49,110 @@ export default function TeacherStudentProgressPage() {
     setLoading(true);
 
     try {
-      let worksData = [];
-      let worksError = null;
+      const worksResponse = await supabase
+        .from("works")
+        .select("*")
+        .eq("teacher_id", currentTeacherId);
 
-      if (currentTeacherId) {
-        const worksResponseById = await supabase
-          .from("works")
-          .select("*")
-          .eq("teacher_id", currentTeacherId);
+      let worksData = worksResponse?.data || [];
 
-        worksData = worksResponseById?.data || [];
-        worksError = worksResponseById?.error || null;
-      }
-
-      // legacy fallback
-      if ((!worksData || worksData.length === 0) && currentTeacherName) {
-        const worksResponseByName = await supabase
+      if (worksData.length === 0) {
+        const fallback = await supabase
           .from("works")
           .select("*")
           .eq("teacher_name", currentTeacherName);
 
-        worksData = worksResponseByName?.data || [];
-        worksError = worksResponseByName?.error || worksError;
+        worksData = fallback?.data || [];
       }
 
-      if (worksError) {
-        console.log("FETCH WORKS ERROR:", worksError);
-      }
+      const workIds = new Set(worksData.map((w) => String(w.id)));
 
-      const teacherWorkIds = new Set(
-        (worksData || [])
-          .map((work) => String(work?.id || "").trim())
-          .filter(Boolean)
-      );
-
-      const { data: submissionsData, error: submissionsError } = await supabase
+      const { data: submissions } = await supabase
         .from("submissions")
-        .select("*")
-        .order("submitted_at", { ascending: false });
+        .select("*");
 
-      if (submissionsError) {
-        console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
-        setProgressRows([]);
-        setLoading(false);
-        return;
-      }
-
-      const teacherSubmissions = (submissionsData || []).filter((item) =>
-        teacherWorkIds.has(String(item?.work_id || "").trim())
+      const teacherSubs = (submissions || []).filter((s) =>
+        workIds.has(String(s.work_id))
       );
 
       const grouped = {};
 
-      for (const item of teacherSubmissions) {
-        const studentName = String(item?.student_name || "").trim() || "Unknown";
-        const className = String(item?.class_name || "").trim() || "-";
-        const subjectName = String(item?.subject_name || "").trim() || "-";
-
-        const key = `${studentName}__${className}__${subjectName}`;
+      teacherSubs.forEach((item) => {
+        const key = `${item.student_name}_${item.class_name}_${item.subject_name}`;
 
         if (!grouped[key]) {
           grouped[key] = {
             id: key,
-            studentName,
-            className,
-            subjectName,
+            studentName: item.student_name,
+            className: item.class_name,
+            subjectName: item.subject_name,
             totalSubmissions: 0,
             checkedCount: 0,
             pendingCount: 0,
             totalScore: 0,
             scoreCount: 0,
-            latestAttempt: 0,
-            latestSubmissionAt: null,
           };
         }
 
-        grouped[key].totalSubmissions += 1;
+        grouped[key].totalSubmissions++;
 
-        if (String(item?.status || "").toLowerCase() === "checked") {
-          grouped[key].checkedCount += 1;
-        } else {
-          grouped[key].pendingCount += 1;
+        if (item.status === "Checked") grouped[key].checkedCount++;
+        else grouped[key].pendingCount++;
+
+        if (item.score !== null && item.score !== "") {
+          grouped[key].totalScore += Number(item.score);
+          grouped[key].scoreCount++;
         }
-
-        if (
-          item?.score !== null &&
-          item?.score !== undefined &&
-          item?.score !== ""
-        ) {
-          grouped[key].totalScore += Number(item.score || 0);
-          grouped[key].scoreCount += 1;
-        }
-
-        const attemptNo = Number(item?.attempt_no || 0);
-        if (attemptNo > grouped[key].latestAttempt) {
-          grouped[key].latestAttempt = attemptNo;
-        }
-
-        if (
-          item?.submitted_at &&
-          (!grouped[key].latestSubmissionAt ||
-            new Date(item.submitted_at) > new Date(grouped[key].latestSubmissionAt))
-        ) {
-          grouped[key].latestSubmissionAt = item.submitted_at;
-        }
-      }
-
-      const rows = Object.values(grouped).map((row) => ({
-        ...row,
-        averageScore:
-          row.scoreCount > 0
-            ? (row.totalScore / row.scoreCount).toFixed(1)
-            : "-",
-      }));
-
-      rows.sort((a, b) => {
-        const aTime = a.latestSubmissionAt
-          ? new Date(a.latestSubmissionAt).getTime()
-          : 0;
-        const bTime = b.latestSubmissionAt
-          ? new Date(b.latestSubmissionAt).getTime()
-          : 0;
-        return bTime - aTime;
       });
 
+      const rows = Object.values(grouped).map((r) => ({
+        ...r,
+        averageScore:
+          r.scoreCount > 0
+            ? (r.totalScore / r.scoreCount).toFixed(1)
+            : 0,
+      }));
+
       setProgressRows(rows);
-    } catch (error) {
-      console.log("STUDENT PROGRESS PAGE ERROR:", error);
-      setProgressRows([]);
+    } catch (err) {
+      console.log("ERROR:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  const classOptions = useMemo(() => {
-    const values = Array.from(
-      new Set(
-        progressRows
-          .map((row) => row?.className)
-          .filter((value) => String(value || "").trim() !== "")
-      )
-    );
-    return ["All", ...values];
-  }, [progressRows]);
+  // 🎯 INSIGHTS CALCULATION
+  const insights = useMemo(() => {
+    if (progressRows.length === 0) return {};
 
-  const subjectOptions = useMemo(() => {
-    const values = Array.from(
-      new Set(
-        progressRows
-          .map((row) => row?.subjectName)
-          .filter((value) => String(value || "").trim() !== "")
-      )
+    const sortedByScore = [...progressRows].sort(
+      (a, b) => b.averageScore - a.averageScore
     );
-    return ["All", ...values];
+
+    const sortedBySubmission = [...progressRows].sort(
+      (a, b) => b.totalSubmissions - a.totalSubmissions
+    );
+
+    const avgScore =
+      progressRows.reduce((sum, r) => sum + Number(r.averageScore || 0), 0) /
+      progressRows.length;
+
+    return {
+      topStudent: sortedByScore[0],
+      weakStudent: sortedByScore[sortedByScore.length - 1],
+      mostActive: sortedBySubmission[0],
+      leastActive: sortedBySubmission[sortedBySubmission.length - 1],
+      overallAvg: avgScore.toFixed(1),
+    };
   }, [progressRows]);
 
   const filteredRows = useMemo(() => {
     return progressRows.filter((row) => {
-      const matchClass =
-        classFilter === "All" ||
-        String(row?.className || "") === String(classFilter);
-
-      const matchSubject =
-        subjectFilter === "All" ||
-        String(row?.subjectName || "") === String(subjectFilter);
-
-      const matchSearch = String(row?.studentName || "")
-        .toLowerCase()
-        .includes(searchText.toLowerCase());
-
-      return matchClass && matchSubject && matchSearch;
+      return (
+        (classFilter === "All" || row.className === classFilter) &&
+        (subjectFilter === "All" || row.subjectName === subjectFilter) &&
+        row.studentName.toLowerCase().includes(searchText.toLowerCase())
+      );
     });
   }, [progressRows, classFilter, subjectFilter, searchText]);
 
@@ -240,174 +165,86 @@ export default function TeacherStudentProgressPage() {
       <div className="flex">
         <Sidebar role="teacher" />
 
-        <main className="flex-1 p-6">
-          <div className="mx-auto max-w-7xl space-y-6">
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    Student Progress
-                  </h1>
-                  <p className="mt-2 text-sm text-gray-600">
-                    Track student submission performance subject-wise and class-wise.
-                  </p>
-                </div>
+        <main className="flex-1 p-6 space-y-6">
 
-                <button
-                  onClick={() => fetchStudentProgress(teacherId, teacherName)}
-                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Search Student
-                  </label>
-                  <input
-                    type="text"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    placeholder="Search by student name..."
-                    className="w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Class Filter
-                  </label>
-                  <select
-                    value={classFilter}
-                    onChange={(e) => setClassFilter(e.target.value)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                  >
-                    {classOptions.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Subject Filter
-                  </label>
-                  <select
-                    value={subjectFilter}
-                    onChange={(e) => setSubjectFilter(e.target.value)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                  >
-                    {subjectOptions.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-white p-6 shadow">
-              <div className="mb-4">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Progress Table
-                </h2>
-                <p className="mt-1 text-sm text-gray-600">
-                  Total Rows: {filteredRows.length}
-                </p>
-              </div>
-
-              {loading ? (
-                <div className="py-10 text-center text-gray-500">
-                  Loading student progress...
-                </div>
-              ) : filteredRows.length === 0 ? (
-                <div className="py-10 text-center text-gray-500">
-                  No student progress found.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border border-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Student
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Class
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Subject
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Total Submissions
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Checked
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Pending
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Average Score
-                        </th>
-                        <th className="border-b px-4 py-3 text-center text-sm font-semibold text-gray-700">
-                          Latest Attempt
-                        </th>
-                        <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                          Last Submission
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {filteredRows.map((row) => (
-                        <tr key={row.id} className="hover:bg-gray-50">
-                          <td className="border-b px-4 py-3 text-sm font-medium text-gray-900">
-                            {row.studentName}
-                          </td>
-                          <td className="border-b px-4 py-3 text-sm text-gray-800">
-                            {row.className}
-                          </td>
-                          <td className="border-b px-4 py-3 text-sm text-gray-800">
-                            {row.subjectName}
-                          </td>
-                          <td className="border-b px-4 py-3 text-center text-sm font-semibold text-blue-600">
-                            {row.totalSubmissions}
-                          </td>
-                          <td className="border-b px-4 py-3 text-center text-sm font-semibold text-green-600">
-                            {row.checkedCount}
-                          </td>
-                          <td className="border-b px-4 py-3 text-center text-sm font-semibold text-red-600">
-                            {row.pendingCount}
-                          </td>
-                          <td className="border-b px-4 py-3 text-center text-sm font-semibold text-emerald-600">
-                            {row.averageScore}
-                          </td>
-                          <td className="border-b px-4 py-3 text-center text-sm text-gray-800">
-                            {row.latestAttempt || 0}
-                          </td>
-                          <td className="border-b px-4 py-3 text-sm text-gray-800">
-                            {row.latestSubmissionAt
-                              ? new Date(row.latestSubmissionAt).toLocaleString("en-IN")
-                              : "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+          {/* 🔥 INSIGHT CARDS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            <Card title="Top Student" value={insights.topStudent?.studentName} />
+            <Card title="Needs Attention" value={insights.weakStudent?.studentName} />
+            <Card title="Most Active" value={insights.mostActive?.studentName} />
+            <Card title="Least Active" value={insights.leastActive?.studentName} />
+            <Card title="Avg Score" value={insights.overallAvg} />
           </div>
+
+          {/* Filters */}
+          <div className="bg-white p-4 rounded shadow grid md:grid-cols-3 gap-3">
+            <input
+              placeholder="Search student..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="border p-2 rounded"
+            />
+
+            <select onChange={(e) => setClassFilter(e.target.value)}>
+              <option>All</option>
+              {[...new Set(progressRows.map(r => r.className))].map(c => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+
+            <select onChange={(e) => setSubjectFilter(e.target.value)}>
+              <option>All</option>
+              {[...new Set(progressRows.map(r => r.subjectName))].map(s => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* TABLE */}
+          <div className="bg-white p-6 rounded shadow">
+            {loading ? (
+              "Loading..."
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th>Student</th>
+                    <th>Class</th>
+                    <th>Subject</th>
+                    <th>Submissions</th>
+                    <th>Checked</th>
+                    <th>Pending</th>
+                    <th>Avg Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((r) => (
+                    <tr key={r.id} className="border-b">
+                      <td>{r.studentName}</td>
+                      <td>{r.className}</td>
+                      <td>{r.subjectName}</td>
+                      <td>{r.totalSubmissions}</td>
+                      <td>{r.checkedCount}</td>
+                      <td>{r.pendingCount}</td>
+                      <td>{r.averageScore}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
         </main>
       </div>
+    </div>
+  );
+}
+
+function Card({ title, value }) {
+  return (
+    <div className="bg-white p-4 rounded shadow">
+      <p className="text-sm text-gray-500">{title}</p>
+      <h2 className="text-xl font-bold">{value || "-"}</h2>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import Sidebar from "@/app/components/Sidebar";
 
 export default function TeacherWorkListPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -41,34 +42,69 @@ export default function TeacherWorkListPage() {
     }
 
     setTeacherName(user?.name || "Teacher");
+    setTeacherId(String(user?.id || ""));
     setIsAllowed(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!isAllowed || (!teacherId && !teacherName)) return;
     fetchWorks();
-  }, [isAllowed]);
+  }, [isAllowed, teacherId, teacherName]);
 
   const fetchWorks = async () => {
     setLoading(true);
     setMessage("");
 
     try {
-      const { data: worksData, error: worksError } = await supabase
-        .from("works")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let worksData = [];
+      let worksError = null;
+
+      if (teacherId) {
+        const worksById = await supabase
+          .from("works")
+          .select("*")
+          .eq("teacher_id", teacherId)
+          .order("created_at", { ascending: false });
+
+        worksData = worksById.data || [];
+        worksError = worksById.error || null;
+      }
+
+      if ((!worksData || worksData.length === 0) && teacherName) {
+        const worksByName = await supabase
+          .from("works")
+          .select("*")
+          .eq("teacher_name", teacherName)
+          .order("created_at", { ascending: false });
+
+        worksData = worksByName.data || [];
+        worksError = worksByName.error || worksError;
+      }
 
       if (worksError) {
         console.log("WORK FETCH ERROR:", worksError);
         setMessage("Failed to load works");
+        setWorks([]);
         setLoading(false);
         return;
       }
 
-      const { data: submissionsData, error: submissionsError } = await supabase
-        .from("submissions")
-        .select("id, work_id");
+      const teacherWorkIds = (worksData || [])
+        .map((item) => item.id)
+        .filter(Boolean);
+
+      let submissionsData = [];
+      let submissionsError = null;
+
+      if (teacherWorkIds.length > 0) {
+        const submissionsResponse = await supabase
+          .from("submissions")
+          .select("id, work_id")
+          .in("work_id", teacherWorkIds);
+
+        submissionsData = submissionsResponse.data || [];
+        submissionsError = submissionsResponse.error || null;
+      }
 
       if (submissionsError) {
         console.log("SUBMISSION FETCH ERROR:", submissionsError);
@@ -91,10 +127,11 @@ export default function TeacherWorkListPage() {
       setWorks(enrichedWorks);
     } catch (error) {
       console.log("FETCH WORKS ERROR:", error);
+      setWorks([]);
       setMessage("Something went wrong while loading works");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleDeleteWork = async (workId, title) => {
@@ -148,7 +185,9 @@ export default function TeacherWorkListPage() {
       const matchSubject =
         subjectFilter === "all" ? true : work.subject_name === subjectFilter;
 
-      const text = `${work.title || ""} ${work.question || ""} ${work.subject_name || ""} ${work.class_name || ""}`.toLowerCase();
+      const text =
+        `${work.title || ""} ${work.question || ""} ${work.subject_name || ""} ${work.class_name || ""}`.toLowerCase();
+
       const matchSearch = searchText.trim()
         ? text.includes(searchText.trim().toLowerCase())
         : true;
@@ -193,7 +232,7 @@ export default function TeacherWorkListPage() {
                 <div>
                   <h1 className="text-3xl font-bold">Teacher - All Works</h1>
                   <p className="mt-2 text-gray-600">
-                    View and manage all created homework and classwork
+                    View and manage your created homework and classwork
                   </p>
                 </div>
 

@@ -10,6 +10,7 @@ export default function TeacherSubmissionsPage() {
   const [highlightStudentName, setHighlightStudentName] = useState("");
 
   const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
 
   const [submissions, setSubmissions] = useState([]);
@@ -61,13 +62,14 @@ export default function TeacherSubmissionsPage() {
     }
 
     setTeacherName(user.name || "Teacher");
+    setTeacherId(String(user.id || ""));
     setIsAllowed(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!isAllowed || (!teacherId && !teacherName)) return;
     fetchSubmissions();
-  }, [isAllowed]);
+  }, [isAllowed, teacherId, teacherName]);
 
   useEffect(() => {
     if (!highlightWorkId || submissions.length === 0) return;
@@ -93,14 +95,62 @@ export default function TeacherSubmissionsPage() {
     setPageMessage("");
 
     try {
+      let worksData = [];
+      let worksError = null;
+
+      if (teacherId) {
+        const worksById = await supabase
+          .from("works")
+          .select("id")
+          .eq("teacher_id", teacherId);
+
+        worksData = worksById.data || [];
+        worksError = worksById.error || null;
+      }
+
+      if ((!worksData || worksData.length === 0) && teacherName) {
+        const worksByName = await supabase
+          .from("works")
+          .select("id")
+          .eq("teacher_name", teacherName);
+
+        worksData = worksByName.data || [];
+        worksError = worksByName.error || worksError;
+      }
+
+      if (worksError) {
+        console.log("FETCH TEACHER WORK IDS ERROR:", worksError);
+        setSubmissions([]);
+        setFeedbackInputs({});
+        setScoreInputs({});
+        setPageMessage("Failed to load teacher works.");
+        setLoading(false);
+        return;
+      }
+
+      const workIds = (worksData || [])
+        .map((item) => item.id)
+        .filter(Boolean);
+
+      if (workIds.length === 0) {
+        setSubmissions([]);
+        setFeedbackInputs({});
+        setScoreInputs({});
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("submissions")
         .select("*")
+        .in("work_id", workIds)
         .order("submitted_at", { ascending: false });
 
       if (error) {
         console.log("FETCH SUBMISSIONS ERROR:", error);
         setSubmissions([]);
+        setFeedbackInputs({});
+        setScoreInputs({});
         setPageMessage("Failed to load submissions.");
       } else {
         const rows = Array.isArray(data) ? data : [];
@@ -123,6 +173,8 @@ export default function TeacherSubmissionsPage() {
     } catch (error) {
       console.log("UNEXPECTED FETCH ERROR:", error);
       setSubmissions([]);
+      setFeedbackInputs({});
+      setScoreInputs({});
       setPageMessage("Something went wrong while loading submissions.");
     } finally {
       setLoading(false);

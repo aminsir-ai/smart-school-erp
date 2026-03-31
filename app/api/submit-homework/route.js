@@ -90,11 +90,10 @@ export async function POST(req) {
     const body = await req.json();
 
     const workId = body?.workId || body?.work_id || null;
-    const teacherName = cleanText(body?.teacherName || body?.teacher_name);
     const studentName = cleanText(body?.studentName || body?.student_name);
-    const className = cleanText(body?.className || body?.class_name);
-    const subjectName = cleanText(body?.subjectName || body?.subject_name);
-    const workTitle = cleanText(body?.workTitle || body?.work_title);
+    const classNameFromBody = cleanText(body?.className || body?.class_name);
+    const subjectNameFromBody = cleanText(body?.subjectName || body?.subject_name);
+    const workTitleFromBody = cleanText(body?.workTitle || body?.work_title);
 
     const studentAnswer = cleanText(
       body?.studentAnswer ||
@@ -103,7 +102,7 @@ export async function POST(req) {
         body?.student_answer
     );
 
-    const teacherAnswer = cleanText(
+    const teacherAnswerFromBody = cleanText(
       body?.teacherAnswer ||
         body?.answerSheet ||
         body?.answer_sheet ||
@@ -128,16 +127,43 @@ export async function POST(req) {
       );
     }
 
-    if (!workTitle) {
+    if (!studentAnswer && !fileUrl) {
       return Response.json(
-        { success: false, error: "workTitle is required." },
+        { success: false, error: "Student answer or file is required." },
         { status: 400 }
       );
     }
 
-    if (!studentAnswer && !fileUrl) {
+    // ✅ Always fetch the work row so the correct teacher is used
+    const { data: workRow, error: workError } = await supabase
+      .from("works")
+      .select("*")
+      .eq("id", workId)
+      .single();
+
+    if (workError || !workRow) {
+      console.log("WORK FETCH ERROR:", workError);
       return Response.json(
-        { success: false, error: "Student answer or file is required." },
+        { success: false, error: "Work not found." },
+        { status: 404 }
+      );
+    }
+
+    const teacherName = cleanText(workRow?.teacher_name);
+    const teacherId = cleanText(workRow?.teacher_id);
+    const className =
+      cleanText(workRow?.class_name || workRow?.class) || classNameFromBody;
+    const subjectName =
+      cleanText(workRow?.subject_name || workRow?.subject) || subjectNameFromBody;
+    const workTitle =
+      cleanText(workRow?.title || workRow?.work_title) || workTitleFromBody;
+    const teacherAnswer =
+      cleanText(workRow?.model_answer || workRow?.answer_sheet) ||
+      teacherAnswerFromBody;
+
+    if (!workTitle) {
+      return Response.json(
+        { success: false, error: "workTitle is required." },
         { status: 400 }
       );
     }
@@ -247,6 +273,7 @@ export async function POST(req) {
 
     const notificationPayload = {
       teacher_name: teacherName || null,
+      teacher_id: teacherId || null,
       student_name: studentName,
       class_name: className || null,
       subject_name: subjectName || null,
@@ -271,8 +298,7 @@ export async function POST(req) {
       return Response.json(
         {
           success: false,
-          error:
-            notificationError.message || "Notification insert failed.",
+          error: notificationError.message || "Notification insert failed.",
           notificationError,
           notificationPayload,
         },

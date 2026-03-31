@@ -238,6 +238,87 @@ export default function ParentDashboard() {
     return checkedList[0];
   }, [submissionMap]);
 
+  const insights = useMemo(() => {
+    const allSubs = Object.values(submissionMap);
+
+    if (allSubs.length === 0) {
+      return {
+        avgScore: "-",
+        totalAttempts: 0,
+        totalMistakes: 0,
+        bestSubject: "-",
+        weakSubject: "-",
+      };
+    }
+
+    let totalScore = 0;
+    let scoreCount = 0;
+    let attempts = 0;
+    let mistakes = 0;
+
+    const subjectMap = {};
+
+    allSubs.forEach((submission) => {
+      attempts += Number(submission?.attempt_no || 1);
+      mistakes += Number(submission?.wrong_count || 0);
+
+      const subject = submission?.subject_name || "Other";
+
+      if (!subjectMap[subject]) {
+        subjectMap[subject] = {
+          total: 0,
+          count: 0,
+        };
+      }
+
+      if (
+        submission?.score !== null &&
+        submission?.score !== undefined &&
+        submission?.score !== ""
+      ) {
+        const scoreValue = Number(submission.score || 0);
+
+        totalScore += scoreValue;
+        scoreCount += 1;
+
+        subjectMap[subject].total += scoreValue;
+        subjectMap[subject].count += 1;
+      }
+    });
+
+    const avgScore =
+      scoreCount > 0 ? (totalScore / scoreCount).toFixed(1) : "-";
+
+    let bestSubject = "-";
+    let weakSubject = "-";
+    let bestAvg = -1;
+    let weakAvg = Number.POSITIVE_INFINITY;
+
+    Object.entries(subjectMap).forEach(([subject, data]) => {
+      if (!data.count) return;
+
+      const subjectAvg = data.total / data.count;
+
+      if (subjectAvg > bestAvg) {
+        bestAvg = subjectAvg;
+        bestSubject = subject;
+      }
+
+      if (subjectAvg < weakAvg) {
+        weakAvg = subjectAvg;
+        weakSubject = subject;
+      }
+    });
+
+    return {
+      avgScore,
+      totalAttempts: attempts,
+      totalMistakes: mistakes,
+      bestSubject,
+      weakSubject,
+    };
+  }, [submissionMap]);
+
   if (!isAllowed) return null;
 
   const childName = student?.name || "-";
@@ -270,7 +351,21 @@ export default function ParentDashboard() {
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+              <InsightCard title="Avg Score" value={insights.avgScore} />
+              <InsightCard title="Best Subject" value={insights.bestSubject} />
+              <InsightCard title="Weak Subject" value={insights.weakSubject} />
+              <InsightCard
+                title="Total Attempts"
+                value={insights.totalAttempts}
+              />
+              <InsightCard
+                title="Mistakes Count"
+                value={insights.totalMistakes}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div className="rounded bg-white p-4 shadow">
                 <p className="text-sm text-gray-500">Total Homework</p>
                 <h2 className="mt-2 text-3xl font-bold">{stats.total}</h2>
@@ -298,7 +393,7 @@ export default function ParentDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="rounded-xl bg-white p-6 shadow">
                 <h2 className="mb-4 text-lg font-semibold">Latest Result</h2>
 
@@ -381,14 +476,16 @@ export default function ParentDashboard() {
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <h4 className="font-semibold">{work.title}</h4>
+                                <h4 className="font-semibold">
+                                  {work.title || work.work_title || "-"}
+                                </h4>
                                 <p className="text-sm text-gray-600">
                                   {work.question || work.description || "-"}
                                 </p>
                               </div>
 
                               <span className="rounded bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                                Homework
+                                {work.type || "Homework"}
                               </span>
                             </div>
 
@@ -445,5 +542,14 @@ export default function ParentDashboard() {
         </div>
       </div>
     </>
+  );
+}
+
+function InsightCard({ title, value }) {
+  return (
+    <div className="rounded bg-white p-4 shadow">
+      <p className="text-sm text-gray-500">{title}</p>
+      <h2 className="mt-2 text-2xl font-bold">{value ?? "-"}</h2>
+    </div>
   );
 }

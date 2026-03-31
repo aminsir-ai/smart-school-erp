@@ -39,7 +39,7 @@ export default function Sidebar({ role = "student" }) {
       const { data, error } = await supabase
         .from("notifications")
         .select("id")
-        .or(`teacher_name.eq.${teacherName},teacher_name.is.null`)
+        .eq("teacher_name", teacherName)
         .eq("is_read", false);
 
       if (error) {
@@ -77,11 +77,20 @@ export default function Sidebar({ role = "student" }) {
     { label: "Profile", path: "/admin-profile" },
   ];
 
+  const parentMenu = [
+    { label: "Dashboard", path: "/parent-dashboard" },
+    { label: "Homework", path: "/parent-dashboard" },
+    { label: "Results", path: "/parent-dashboard" },
+    { label: "Profile", path: "/parent-dashboard" },
+  ];
+
   const menu =
     role === "teacher"
       ? teacherMenu
       : role === "admin"
       ? adminMenu
+      : role === "parent"
+      ? parentMenu
       : studentMenu;
 
   return (

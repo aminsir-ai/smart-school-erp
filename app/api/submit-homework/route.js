@@ -87,12 +87,21 @@ async function runAutoCheck({
 
 export async function POST(req) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return Response.json(
+        { success: false, error: "Missing API key." },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
 
     const workId = body?.workId || body?.work_id || null;
     const studentName = cleanText(body?.studentName || body?.student_name);
     const classNameFromBody = cleanText(body?.className || body?.class_name);
-    const subjectNameFromBody = cleanText(body?.subjectName || body?.subject_name);
+    const subjectNameFromBody = cleanText(
+      body?.subjectName || body?.subject_name
+    );
     const workTitleFromBody = cleanText(body?.workTitle || body?.work_title);
 
     const studentAnswer = cleanText(
@@ -134,7 +143,7 @@ export async function POST(req) {
       );
     }
 
-    // ✅ Always fetch the work row so the correct teacher is used
+    // Always fetch work so correct teacher data is used
     const { data: workRow, error: workError } = await supabase
       .from("works")
       .select("*")
@@ -150,13 +159,20 @@ export async function POST(req) {
     }
 
     const teacherName = cleanText(workRow?.teacher_name);
-    const teacherId = cleanText(workRow?.teacher_id);
+    const teacherId = workRow?.teacher_id
+      ? String(workRow.teacher_id).trim()
+      : null;
+
     const className =
       cleanText(workRow?.class_name || workRow?.class) || classNameFromBody;
+
     const subjectName =
-      cleanText(workRow?.subject_name || workRow?.subject) || subjectNameFromBody;
+      cleanText(workRow?.subject_name || workRow?.subject) ||
+      subjectNameFromBody;
+
     const workTitle =
       cleanText(workRow?.title || workRow?.work_title) || workTitleFromBody;
+
     const teacherAnswer =
       cleanText(workRow?.model_answer || workRow?.answer_sheet) ||
       teacherAnswerFromBody;
@@ -207,7 +223,12 @@ export async function POST(req) {
     }
 
     const isCorrect = Boolean(aiResult?.is_correct);
-    const finalStatus = aiResult ? (isCorrect ? "Checked" : "Pending") : "Pending";
+
+    const finalStatus = aiResult
+      ? isCorrect
+        ? "Checked"
+        : "Pending"
+      : "Pending";
 
     const feedbackText = aiResult
       ? cleanText(aiResult?.short_remark) ||
@@ -263,6 +284,18 @@ export async function POST(req) {
       );
     }
 
+    if (!teacherId) {
+      console.log("MISSING TEACHER ID IN WORK ROW:", workRow);
+      return Response.json(
+        {
+          success: false,
+          error: "Teacher ID missing. Cannot send notification.",
+          submission: insertedRow,
+        },
+        { status: 500 }
+      );
+    }
+
     let notificationMessage = "";
 
     if (isCorrect) {
@@ -272,8 +305,8 @@ export async function POST(req) {
     }
 
     const notificationPayload = {
-      teacher_name: teacherName || null,
-      teacher_id: teacherId || null,
+      teacher_id: teacherId,
+      teacher_name: teacherName || null, // keep for legacy safety
       student_name: studentName,
       class_name: className || null,
       subject_name: subjectName || null,
@@ -285,11 +318,12 @@ export async function POST(req) {
       is_read: false,
     };
 
-    const { data: insertedNotification, error: notificationError } = await supabase
-      .from("notifications")
-      .insert([notificationPayload])
-      .select()
-      .single();
+    const { data: insertedNotification, error: notificationError } =
+      await supabase
+        .from("notifications")
+        .insert([notificationPayload])
+        .select()
+        .single();
 
     if (notificationError) {
       console.log("NOTIFICATION INSERT ERROR:", notificationError);

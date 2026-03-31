@@ -401,8 +401,13 @@ export default function ParentDashboard() {
           return;
         }
 
+        // white background to avoid black box in PDF
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
+
+        resolve(canvas.toDataURL("image/jpeg", 0.95));
       };
 
       img.onerror = function () {
@@ -428,6 +433,7 @@ export default function ParentDashboard() {
 
     const doc = new jsPDF();
     const logoData = await loadImageAsDataURL("/school-logo.png");
+    const signData = await loadImageAsDataURL("/principal-sign.png");
 
     let y = 18;
 
@@ -436,7 +442,7 @@ export default function ParentDashboard() {
     doc.rect(0, 0, 210, 32, "F");
 
     if (logoData) {
-      doc.addImage(logoData, "PNG", 14, 6, 18, 18);
+      doc.addImage(logoData, "JPEG", 14, 6, 18, 18);
     } else {
       doc.setFillColor(255, 255, 255);
       doc.circle(23, 15, 8, "F");
@@ -653,20 +659,24 @@ export default function ParentDashboard() {
     addSectionTitle(doc, "School Verification", y);
     y += 18;
 
-    // Left signature box
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(20, y, 70, 28, 3, 3, "FD");
-    doc.line(28, y + 18, 82, y + 18);
+    doc.roundedRect(120, y, 70, 32, 3, 3, "FD");
+
+    if (signData) {
+      doc.addImage(signData, "JPEG", 130, y + 2, 50, 18);
+    } else {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Signature", 155, y + 14, { align: "center" });
+    }
+
+    doc.line(128, y + 24, 182, y + 24);
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text("Class Teacher Signature", 55, y + 24, { align: "center" });
+    doc.text("Principal Signature", 155, y + 30, { align: "center" });
 
-    // Right signature box
-    doc.roundedRect(120, y, 70, 28, 3, 3, "FD");
-    doc.line(128, y + 18, 182, y + 18);
-    doc.text("Principal Signature", 155, y + 24, { align: "center" });
-
-    y += 38;
+    y += 42;
 
     doc.setFontSize(9);
     doc.setTextColor(107, 114, 128);

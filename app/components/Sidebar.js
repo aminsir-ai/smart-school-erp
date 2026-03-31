@@ -16,12 +16,8 @@ export default function Sidebar({ role = "student" }) {
 
     try {
       const user = JSON.parse(storedUser);
-
-      // support both possible structures safely
-      const resolvedTeacherId =
-        user?.teacher_id || user?.id || "";
-
-      setTeacherId(resolvedTeacherId);
+      const resolvedTeacherId = user?.teacher_id || user?.id || "";
+      setTeacherId(String(resolvedTeacherId).trim());
     } catch (error) {
       console.log("SIDEBAR USER PARSE ERROR:", error);
     }
@@ -72,6 +68,7 @@ export default function Sidebar({ role = "student" }) {
     { label: "Create Work", path: "/teacher-create-work" },
     { label: "All Works", path: "/teacher-work-list" },
     { label: "Submissions", path: "/teacher-submissions" },
+    { label: "Student Progress", path: "/teacher-student-progress" },
     { label: "Notifications", path: "/teacher-notifications" },
     { label: "Profile", path: "/teacher-profile" },
   ];

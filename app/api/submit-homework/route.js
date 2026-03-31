@@ -82,14 +82,24 @@ async function runAutoCheck({
   });
 
   const rawText = response.output?.[0]?.content?.[0]?.text || "{}";
-  return JSON.parse(rawText);
+
+  try {
+    return JSON.parse(rawText);
+  } catch (parseError) {
+    throw new Error(
+      `Invalid JSON from OpenAI. Raw response: ${rawText}`
+    );
+  }
 }
 
 export async function POST(req) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return Response.json(
-        { success: false, error: "Missing API key." },
+        {
+          success: false,
+          error: "Missing OPENAI_API_KEY in environment.",
+        },
         { status: 500 }
       );
     }
@@ -143,7 +153,6 @@ export async function POST(req) {
       );
     }
 
-    // Always fetch work so correct teacher data is used
     const { data: workRow, error: workError } = await supabase
       .from("works")
       .select("*")
@@ -219,6 +228,15 @@ export async function POST(req) {
         });
       } catch (aiError) {
         console.log("AUTO CHECK FAILED:", aiError);
+
+        return Response.json(
+          {
+            success: false,
+            error: "AUTO_CHECK_FAILED",
+            aiErrorMessage: aiError?.message || String(aiError),
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -306,7 +324,7 @@ export async function POST(req) {
 
     const notificationPayload = {
       teacher_id: teacherId,
-      teacher_name: teacherName || null, // keep for legacy safety
+      teacher_name: teacherName || null,
       student_name: studentName,
       class_name: className || null,
       subject_name: subjectName || null,

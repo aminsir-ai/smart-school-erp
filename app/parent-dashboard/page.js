@@ -334,10 +334,7 @@ export default function ParentDashboard() {
   function getPerformanceLabel(score) {
     const numericScore = Number(score);
 
-    if (Number.isNaN(numericScore)) {
-      return "No Score Available";
-    }
-
+    if (Number.isNaN(numericScore)) return "No Score Available";
     if (numericScore >= 90) return "GOLD TROPHY - STAR PERFORMER";
     if (numericScore >= 75) return "EXCELLENT PERFORMANCE";
     if (numericScore >= 60) return "GOOD PROGRESS";
@@ -388,7 +385,35 @@ export default function ParentDashboard() {
     doc.text(`${value}`, x + 38, y);
   }
 
-  function generatePDF() {
+  function loadImageAsDataURL(src) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+
+      img.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+
+      img.onerror = function () {
+        resolve(null);
+      };
+
+      img.src = src;
+    });
+  }
+
+  async function generatePDF() {
     const childName = student?.name || "-";
     const childClass = student?.class_name || student?.class || "-";
     const rollNo =
@@ -402,24 +427,41 @@ export default function ParentDashboard() {
     const remarks = getRemarks(avgNumericScore);
 
     const doc = new jsPDF();
+    const logoData = await loadImageAsDataURL("/school-logo.png");
+
     let y = 18;
 
     // Header
     doc.setFillColor(30, 64, 175);
-    doc.rect(0, 0, 210, 30, "F");
+    doc.rect(0, 0, 210, 32, "F");
+
+    if (logoData) {
+      doc.addImage(logoData, "PNG", 14, 6, 18, 18);
+    } else {
+      doc.setFillColor(255, 255, 255);
+      doc.circle(23, 15, 8, "F");
+      doc.setTextColor(30, 64, 175);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("LOGO", 23, 17, { align: "center" });
+    }
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text("UNITED ENGLISH SCHOOL - MORBA", 105, 12, { align: "center" });
+    doc.text("UNITED ENGLISH SCHOOL - MORBA", 118, 12, { align: "center" });
 
     doc.setFontSize(14);
-    doc.text("STUDENT REPORT CARD", 105, 21, { align: "center" });
+    doc.text("STUDENT REPORT CARD", 118, 21, { align: "center" });
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Smart ERP System", 118, 27, { align: "center" });
 
     doc.setTextColor(0, 0, 0);
 
     // Student info box
-    y = 40;
+    y = 42;
     doc.setDrawColor(200, 200, 200);
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(14, y, 182, 26, 3, 3, "FD");
@@ -429,8 +471,8 @@ export default function ParentDashboard() {
     addLabelValue(doc, "Class:", childClass, 20, y + 18);
     addLabelValue(doc, "Roll No:", rollNo, 105, y + 18);
 
-    // Grade and trophy box
-    y = 74;
+    // Grade and performance
+    y = 76;
     doc.setFillColor(254, 249, 195);
     doc.roundedRect(14, y, 182, 22, 3, 3, "FD");
 
@@ -442,7 +484,7 @@ export default function ParentDashboard() {
     doc.text(`Performance: ${performanceLabel}`, 20, y + 18);
 
     // Performance Summary
-    y = 108;
+    y = 110;
     addSectionTitle(doc, "Performance Summary", y);
 
     y += 10;
@@ -473,7 +515,7 @@ export default function ParentDashboard() {
     addLabelValue(doc, "Submitted:", stats.submitted, 18, y + 14);
     addLabelValue(doc, "Checked:", stats.checked, 112, y + 14);
 
-    // Latest Result
+    // Latest checked result
     y += 30;
     addSectionTitle(doc, "Latest Checked Result", y);
 
@@ -530,7 +572,7 @@ export default function ParentDashboard() {
     y += 10;
 
     Object.keys(groupedWorks).forEach((subject) => {
-      if (y > 260) {
+      if (y > 250) {
         doc.addPage();
         y = 20;
       }
@@ -543,7 +585,7 @@ export default function ParentDashboard() {
       y += 10;
 
       groupedWorks[subject].forEach((work) => {
-        if (y > 265) {
+        if (y > 255) {
           doc.addPage();
           y = 20;
         }
@@ -599,6 +641,41 @@ export default function ParentDashboard() {
 
       y += 2;
     });
+
+    // Signature area
+    if (y > 235) {
+      doc.addPage();
+      y = 30;
+    } else {
+      y += 14;
+    }
+
+    addSectionTitle(doc, "School Verification", y);
+    y += 18;
+
+    // Left signature box
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(20, y, 70, 28, 3, 3, "FD");
+    doc.line(28, y + 18, 82, y + 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Class Teacher Signature", 55, y + 24, { align: "center" });
+
+    // Right signature box
+    doc.roundedRect(120, y, 70, 28, 3, 3, "FD");
+    doc.line(128, y + 18, 182, y + 18);
+    doc.text("Principal Signature", 155, y + 24, { align: "center" });
+
+    y += 38;
+
+    doc.setFontSize(9);
+    doc.setTextColor(107, 114, 128);
+    doc.text(
+      "This report card is generated digitally from the Smart ERP System.",
+      105,
+      y,
+      { align: "center" }
+    );
 
     doc.save(`${childName}_colorful_report_card.pdf`);
   }

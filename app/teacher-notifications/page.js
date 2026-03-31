@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 
 export default function TeacherNotificationsPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -37,14 +38,15 @@ export default function TeacherNotificationsPage() {
     }
 
     setTeacherName(user.name || "Teacher");
+    setTeacherId(user.teacher_id || user.id || "");
     setIsAllowed(true);
   }, []);
 
   useEffect(() => {
-    if (isAllowed && teacherName) {
+    if (isAllowed && teacherId) {
       fetchNotifications();
     }
-  }, [isAllowed, teacherName]);
+  }, [isAllowed, teacherId]);
 
   async function fetchNotifications() {
     setLoading(true);
@@ -53,7 +55,7 @@ export default function TeacherNotificationsPage() {
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .eq("teacher_name", teacherName)
+        .eq("teacher_id", teacherId)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -97,9 +99,7 @@ export default function TeacherNotificationsPage() {
         .filter((item) => !item.is_read)
         .map((item) => item.id);
 
-      if (unreadIds.length === 0) {
-        return;
-      }
+      if (unreadIds.length === 0) return;
 
       const { error } = await supabase
         .from("notifications")
@@ -123,33 +123,21 @@ export default function TeacherNotificationsPage() {
       if (!item?.id) return;
 
       if (!item.is_read) {
-        const { error } = await supabase
+        await supabase
           .from("notifications")
           .update({ is_read: true })
           .eq("id", item.id);
-
-        if (!error) {
-          setNotifications((prev) =>
-            prev.map((row) =>
-              row.id === item.id ? { ...row, is_read: true } : row
-            )
-          );
-        }
       }
 
       const params = new URLSearchParams();
 
-      if (item.work_id) {
-        params.set("workId", item.work_id);
-      }
-
-      if (item.student_name) {
+      if (item.work_id) params.set("workId", item.work_id);
+      if (item.student_name)
         params.set("studentName", item.student_name);
-      }
 
       window.location.href = `/teacher-submissions?${params.toString()}`;
     } catch (error) {
-      console.log("OPEN SUBMISSION FROM NOTIFICATION ERROR:", error);
+      console.log("OPEN NOTIFICATION ERROR:", error);
     }
   }
 
@@ -162,16 +150,11 @@ export default function TeacherNotificationsPage() {
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
       <Header name={teacherName} />
+
       <div style={{ display: "flex" }}>
         <Sidebar role="teacher" />
 
-        <main
-          style={{
-            flex: 1,
-            padding: "20px",
-            marginLeft: "250px",
-          }}
-        >
+        <main style={{ flex: 1, padding: "20px", marginLeft: "250px" }}>
           <div
             style={{
               backgroundColor: "#ffffff",
@@ -181,233 +164,56 @@ export default function TeacherNotificationsPage() {
               border: "1px solid #e5e7eb",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-                flexWrap: "wrap",
-                gap: "12px",
-              }}
-            >
-              <div>
-                <h1
-                  style={{
-                    margin: 0,
-                    fontSize: "26px",
-                    fontWeight: "700",
-                    color: "#111827",
-                  }}
-                >
-                  Teacher Notifications
-                </h1>
+            <h1 style={{ fontSize: "24px", fontWeight: "700" }}>
+              Teacher Notifications
+            </h1>
 
-                <p
-                  style={{
-                    marginTop: "8px",
-                    marginBottom: "10px",
-                    color: "#6b7280",
-                    fontSize: "14px",
-                  }}
-                >
-                  Welcome, {teacherName}. See student submission updates here.
-                </p>
+            <p style={{ color: "#6b7280", marginBottom: "10px" }}>
+              Welcome, {teacherName}
+            </p>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "8px 12px",
-                      borderRadius: "999px",
-                      backgroundColor:
-                        unreadCount > 0 ? "#dbeafe" : "#f3f4f6",
-                      color: unreadCount > 0 ? "#1d4ed8" : "#6b7280",
-                      fontSize: "13px",
-                      fontWeight: "700",
-                      border:
-                        unreadCount > 0
-                          ? "1px solid #93c5fd"
-                          : "1px solid #e5e7eb",
-                    }}
-                  >
-                    Unread Notifications: {unreadCount}
-                  </span>
+            <p style={{ marginBottom: "10px" }}>
+              Unread: {unreadCount}
+            </p>
 
-                  {unreadCount > 0 ? (
-                    <button
-                      onClick={markAllAsRead}
-                      disabled={markingAll}
-                      style={{
-                        backgroundColor: "#16a34a",
-                        color: "#ffffff",
-                        border: "none",
-                        borderRadius: "10px",
-                        padding: "8px 14px",
-                        fontSize: "13px",
-                        fontWeight: "600",
-                        cursor: markingAll ? "not-allowed" : "pointer",
-                        opacity: markingAll ? 0.6 : 1,
-                      }}
-                    >
-                      {markingAll ? "Marking..." : "Mark All as Read"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <button
-                onClick={fetchNotifications}
-                style={{
-                  backgroundColor: "#2563eb",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "10px",
-                  padding: "10px 16px",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                }}
-              >
-                Refresh
-              </button>
-            </div>
+            <button onClick={fetchNotifications}>Refresh</button>
 
             {loading ? (
-              <div
-                style={{
-                  padding: "30px 0",
-                  textAlign: "center",
-                  color: "#6b7280",
-                }}
-              >
-                Loading notifications...
-              </div>
+              <p>Loading...</p>
             ) : notifications.length === 0 ? (
-              <div
-                style={{
-                  padding: "30px 0",
-                  textAlign: "center",
-                  color: "#6b7280",
-                }}
-              >
-                No notifications yet.
-              </div>
+              <p>No notifications</p>
             ) : (
-              <div style={{ display: "grid", gap: "12px" }}>
-                {notifications.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => openSubmissionFromNotification(item)}
-                    style={{
-                      border: item.is_read
-                        ? "1px solid #e5e7eb"
-                        : "1px solid #93c5fd",
-                      backgroundColor: item.is_read ? "#ffffff" : "#eff6ff",
-                      borderRadius: "12px",
-                      padding: "16px",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "start",
-                        gap: "12px",
-                        flexWrap: "wrap",
+              notifications.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() =>
+                    openSubmissionFromNotification(item)
+                  }
+                  style={{
+                    border: "1px solid #ddd",
+                    padding: "10px",
+                    marginTop: "10px",
+                    background: item.is_read ? "#fff" : "#eef6ff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <p>{item.message}</p>
+                  <p>Student: {item.student_name}</p>
+                  <p>Class: {item.class_name}</p>
+                  <p>Subject: {item.subject_name}</p>
+
+                  {!item.is_read && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAsRead(item.id);
                       }}
                     >
-                      <div style={{ flex: 1 }}>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontWeight: "600",
-                            color: "#111827",
-                          }}
-                        >
-                          {item.message}
-                        </p>
-
-                        <div
-                          style={{
-                            marginTop: "8px",
-                            fontSize: "13px",
-                            color: "#6b7280",
-                            display: "grid",
-                            gap: "4px",
-                          }}
-                        >
-                          <span>Student: {item.student_name || "-"}</span>
-                          <span>Class: {item.class_name || "-"}</span>
-                          <span>Subject: {item.subject_name || "-"}</span>
-                          <span>Work: {item.work_title || "-"}</span>
-                          <span>Attempt: {item.attempt_no || 1}</span>
-                          <span>
-                            Date:{" "}
-                            {item.created_at
-                              ? new Date(item.created_at).toLocaleString("en-IN")
-                              : "-"}
-                          </span>
-                          <span
-                            style={{
-                              color: "#2563eb",
-                              fontWeight: "600",
-                              marginTop: "4px",
-                            }}
-                          >
-                            Click to open submission
-                          </span>
-                        </div>
-                      </div>
-
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ display: "flex", alignItems: "center" }}
-                      >
-                        {!item.is_read ? (
-                          <button
-                            onClick={() => markAsRead(item.id)}
-                            style={{
-                              backgroundColor: "#16a34a",
-                              color: "#ffffff",
-                              border: "none",
-                              borderRadius: "8px",
-                              padding: "8px 12px",
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Mark as Read
-                          </button>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: "700",
-                              color: "#166534",
-                              backgroundColor: "#dcfce7",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                            }}
-                          >
-                            Read
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      Mark Read
+                    </button>
+                  )}
+                </div>
+              ))
             )}
           </div>
         </main>

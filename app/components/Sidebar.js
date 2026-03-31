@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 export default function Sidebar({ role = "student" }) {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [teacherName, setTeacherName] = useState("");
+  const [teacherId, setTeacherId] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -16,14 +16,19 @@ export default function Sidebar({ role = "student" }) {
 
     try {
       const user = JSON.parse(storedUser);
-      setTeacherName(user?.name || "");
+
+      // support both possible structures safely
+      const resolvedTeacherId =
+        user?.teacher_id || user?.id || "";
+
+      setTeacherId(resolvedTeacherId);
     } catch (error) {
       console.log("SIDEBAR USER PARSE ERROR:", error);
     }
   }, []);
 
   useEffect(() => {
-    if (role !== "teacher" || !teacherName) return;
+    if (role !== "teacher" || !teacherId) return;
 
     fetchUnreadCount();
 
@@ -32,14 +37,14 @@ export default function Sidebar({ role = "student" }) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [role, teacherName]);
+  }, [role, teacherId]);
 
   async function fetchUnreadCount() {
     try {
-      const { data, error } = await supabase
+      const { count, error } = await supabase
         .from("notifications")
-        .select("id")
-        .eq("teacher_name", teacherName)
+        .select("*", { count: "exact", head: true })
+        .eq("teacher_id", teacherId)
         .eq("is_read", false);
 
       if (error) {
@@ -48,7 +53,7 @@ export default function Sidebar({ role = "student" }) {
         return;
       }
 
-      setUnreadCount(Array.isArray(data) ? data.length : 0);
+      setUnreadCount(count || 0);
     } catch (error) {
       console.log("UNREAD COUNT FETCH FAILED:", error);
       setUnreadCount(0);

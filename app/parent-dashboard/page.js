@@ -6,6 +6,8 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
+const FIXED_ACADEMIC_YEAR_START = 2026;
+
 export default function ParentDashboard() {
   const [parentName, setParentName] = useState("Parent");
   const [studentId, setStudentId] = useState(null);
@@ -17,7 +19,9 @@ export default function ParentDashboard() {
   const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const [academicYearStart, setAcademicYearStart] = useState(null);
+  const [academicYearStart, setAcademicYearStart] = useState(
+    FIXED_ACADEMIC_YEAR_START
+  );
   const [monthFilter, setMonthFilter] = useState("All");
 
   useEffect(() => {
@@ -76,53 +80,11 @@ export default function ParentDashboard() {
     return nextTime > currentTime;
   }
 
-  function getAcademicYearStartFromDate(dateValue) {
-    if (!dateValue) return null;
-
-    const date = new Date(dateValue);
-    if (Number.isNaN(date.getTime())) return null;
-
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-
-    if (month >= 6) return year; // June to Dec
-    if (month >= 1 && month <= 4) return year - 1; // Jan to Apr belongs to previous academic year
-
-    return null; // May excluded
-  }
-
-  function getCurrentAcademicYearStart() {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-
-    if (month >= 6) return year;
-    return year - 1;
-  }
-
-  function isDateInAcademicYear(dateValue, startYear) {
-    if (!dateValue || !startYear) return false;
-
-    const date = new Date(dateValue);
-    if (Number.isNaN(date.getTime())) return false;
-
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-
-    if (year === startYear && month >= 6 && month <= 12) return true;
-    if (year === startYear + 1 && month >= 1 && month <= 4) return true;
-
-    return false;
-  }
-
   function getAcademicYearLabel(startYear) {
-    if (!startYear) return "-";
     return `June-${startYear} to April-${startYear + 1}`;
   }
 
   function getAcademicMonthOptions(startYear) {
-    if (!startYear) return [{ value: "All", label: "All Months" }];
-
     return [
       { value: "All", label: "All Months" },
       { value: `${startYear}-06`, label: `June ${startYear}` },
@@ -166,6 +128,34 @@ export default function ParentDashboard() {
 
   function getSubmissionDate(submission) {
     return submission?.submitted_at || submission?.created_at || null;
+  }
+
+  function isDateInFixedAcademicYear(dateValue) {
+    if (!dateValue) return false;
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+
+    if (
+      year === FIXED_ACADEMIC_YEAR_START &&
+      month >= 6 &&
+      month <= 12
+    ) {
+      return true;
+    }
+
+    if (
+      year === FIXED_ACADEMIC_YEAR_START + 1 &&
+      month >= 1 &&
+      month <= 4
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   async function fetchData() {
@@ -234,28 +224,7 @@ export default function ParentDashboard() {
         setNotifications(notificationsData || []);
       }
 
-      const derivedYears = new Set();
-
-      (worksData || []).forEach((work) => {
-        const startYear = getAcademicYearStartFromDate(getWorkDate(work));
-        if (startYear) derivedYears.add(startYear);
-      });
-
-      (submissionsData || []).forEach((submission) => {
-        const startYear = getAcademicYearStartFromDate(
-          getSubmissionDate(submission)
-        );
-        if (startYear) derivedYears.add(startYear);
-      });
-
-      const currentAcademicYear = getCurrentAcademicYearStart();
-      derivedYears.add(currentAcademicYear);
-
-      const sortedYears = Array.from(derivedYears).sort((a, b) => b - a);
-
-      if (!academicYearStart && sortedYears.length > 0) {
-        setAcademicYearStart(sortedYears[0]);
-      }
+      setAcademicYearStart(FIXED_ACADEMIC_YEAR_START);
     } catch (error) {
       console.log("PARENT DASHBOARD ERROR:", error);
       setStudent(null);
@@ -296,55 +265,36 @@ export default function ParentDashboard() {
   }
 
   const academicYearOptions = useMemo(() => {
-    const years = new Set();
-
-    rawWorks.forEach((work) => {
-      const year = getAcademicYearStartFromDate(getWorkDate(work));
-      if (year) years.add(year);
-    });
-
-    rawSubmissions.forEach((submission) => {
-      const year = getAcademicYearStartFromDate(getSubmissionDate(submission));
-      if (year) years.add(year);
-    });
-
-    years.add(getCurrentAcademicYearStart());
-
-    return Array.from(years).sort((a, b) => b - a);
-  }, [rawWorks, rawSubmissions]);
+    return [FIXED_ACADEMIC_YEAR_START];
+  }, []);
 
   const monthOptions = useMemo(() => {
-    return getAcademicMonthOptions(academicYearStart);
-  }, [academicYearStart]);
+    return getAcademicMonthOptions(FIXED_ACADEMIC_YEAR_START);
+  }, []);
 
   const filteredWorks = useMemo(() => {
-    if (!academicYearStart) return [];
-
     return rawWorks.filter((work) => {
       const workDate = getWorkDate(work);
 
-      if (!isDateInAcademicYear(workDate, academicYearStart)) return false;
+      if (!isDateInFixedAcademicYear(workDate)) return false;
 
       if (monthFilter === "All") return true;
 
       return getMonthKey(workDate) === monthFilter;
     });
-  }, [rawWorks, academicYearStart, monthFilter]);
+  }, [rawWorks, monthFilter]);
 
   const filteredSubmissions = useMemo(() => {
-    if (!academicYearStart) return [];
-
     return rawSubmissions.filter((submission) => {
       const submissionDate = getSubmissionDate(submission);
 
-      if (!isDateInAcademicYear(submissionDate, academicYearStart))
-        return false;
+      if (!isDateInFixedAcademicYear(submissionDate)) return false;
 
       if (monthFilter === "All") return true;
 
       return getMonthKey(submissionDate) === monthFilter;
     });
-  }, [rawSubmissions, academicYearStart, monthFilter]);
+  }, [rawSubmissions, monthFilter]);
 
   const groupedWorks = useMemo(() => {
     const grouped = {};
@@ -631,7 +581,9 @@ export default function ParentDashboard() {
     const performanceLabel = getPerformanceLabel(avgNumericScore);
     const remarks = getRemarks(avgNumericScore);
     const selectedMonthLabel = getMonthLabel(monthFilter);
-    const selectedAcademicYearLabel = getAcademicYearLabel(academicYearStart);
+    const selectedAcademicYearLabel = getAcademicYearLabel(
+      FIXED_ACADEMIC_YEAR_START
+    );
 
     const doc = new jsPDF();
     const logoData = await loadImageAsDataURL("/school-logo.png");
@@ -985,10 +937,8 @@ export default function ParentDashboard() {
 
               <div className="flex flex-wrap gap-3">
                 <select
-                  value={academicYearStart || ""}
-                  onChange={(e) =>
-                    setAcademicYearStart(Number(e.target.value))
-                  }
+                  value={academicYearStart}
+                  onChange={(e) => setAcademicYearStart(Number(e.target.value))}
                   className="rounded border border-gray-300 px-3 py-2"
                 >
                   {academicYearOptions.map((year) => (

@@ -154,12 +154,70 @@ export default function TeacherSubmissionsPage() {
         setPageMessage("Failed to load submissions.");
       } else {
         const rows = Array.isArray(data) ? data : [];
-        setSubmissions(rows);
+
+        let workDetailsMap = {};
+
+        try {
+          const { data: worksFullData, error: worksFullError } = await supabase
+            .from("works")
+            .select(`
+              id,
+              question,
+              model_answer,
+              question_image_url,
+              question_image_name,
+              question_file_url,
+              question_file_name,
+              model_answer_image_url,
+              model_answer_image_name,
+              model_answer_file_url,
+              model_answer_file_name
+            `)
+            .in("id", workIds);
+
+          if (worksFullError) {
+            console.log("FETCH WORK DETAILS ERROR:", worksFullError);
+          } else {
+            workDetailsMap = (worksFullData || []).reduce((acc, work) => {
+              acc[String(work.id)] = work;
+              return acc;
+            }, {});
+          }
+        } catch (workFetchError) {
+          console.log("UNEXPECTED WORK DETAILS ERROR:", workFetchError);
+        }
+
+        const mergedRows = rows.map((item) => {
+          const workInfo = workDetailsMap[String(item.work_id)] || {};
+          return {
+            ...item,
+            work_question: workInfo.question || "",
+            work_model_answer: workInfo.model_answer || "",
+            question_image_url:
+              workInfo.question_image_url ||
+              workInfo.question_file_url ||
+              "",
+            question_image_name:
+              workInfo.question_image_name ||
+              workInfo.question_file_name ||
+              "",
+            model_answer_image_url:
+              workInfo.model_answer_image_url ||
+              workInfo.model_answer_file_url ||
+              "",
+            model_answer_image_name:
+              workInfo.model_answer_image_name ||
+              workInfo.model_answer_file_name ||
+              "",
+          };
+        });
+
+        setSubmissions(mergedRows);
 
         const feedbackMap = {};
         const scoreMap = {};
 
-        rows.forEach((item) => {
+        mergedRows.forEach((item) => {
           feedbackMap[item.id] = item.feedback || "";
           scoreMap[item.id] =
             item.score === null || item.score === undefined
@@ -432,6 +490,148 @@ export default function TeacherSubmissionsPage() {
     };
   }
 
+  function isImageFile(url = "", fileName = "") {
+    const value = `${url} ${fileName}`.toLowerCase();
+    return (
+      value.includes(".png") ||
+      value.includes(".jpg") ||
+      value.includes(".jpeg") ||
+      value.includes(".webp") ||
+      value.includes(".gif") ||
+      value.includes(".bmp") ||
+      value.includes(".svg")
+    );
+  }
+
+  function isPdfOrDocFile(url = "", fileName = "") {
+    const value = `${url} ${fileName}`.toLowerCase();
+    return (
+      value.includes(".pdf") ||
+      value.includes(".doc") ||
+      value.includes(".docx") ||
+      value.includes(".ppt") ||
+      value.includes(".pptx") ||
+      value.includes(".xls") ||
+      value.includes(".xlsx") ||
+      value.includes(".txt")
+    );
+  }
+
+  function renderPreviewBlock(title, fileUrl, fileName) {
+    if (!fileUrl) return null;
+
+    const imageFile = isImageFile(fileUrl, fileName);
+    const docFile = isPdfOrDocFile(fileUrl, fileName);
+
+    return (
+      <div
+        style={{
+          marginTop: "12px",
+          border: "1px solid #e5e7eb",
+          borderRadius: "12px",
+          padding: "12px",
+          backgroundColor: "#ffffff",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: "700",
+            color: "#111827",
+            marginBottom: "10px",
+          }}
+        >
+          {title}
+        </div>
+
+        {imageFile ? (
+          <div>
+            <img
+              src={fileUrl}
+              alt={fileName || title}
+              style={{
+                width: "100%",
+                maxWidth: "420px",
+                borderRadius: "10px",
+                border: "1px solid #d1d5db",
+                display: "block",
+                backgroundColor: "#f9fafb",
+              }}
+            />
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "12px",
+                color: "#6b7280",
+                wordBreak: "break-word",
+              }}
+            >
+              {fileName || "Image file"}
+            </div>
+            <div style={{ marginTop: "10px" }}>
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-block",
+                  backgroundColor: "#2563eb",
+                  color: "#ffffff",
+                  textDecoration: "none",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                }}
+              >
+                View Full Image
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "10px",
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "13px",
+                color: "#4b5563",
+                wordBreak: "break-word",
+              }}
+            >
+              {fileName ||
+                (docFile ? "Document file" : "Uploaded file")}
+            </span>
+
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block",
+                backgroundColor: "#2563eb",
+                color: "#ffffff",
+                textDecoration: "none",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                fontSize: "13px",
+                fontWeight: "600",
+              }}
+            >
+              View File
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!isAllowed) {
     return null;
   }
@@ -626,6 +826,13 @@ export default function TeacherSubmissionsPage() {
                     (!highlightStudentName ||
                       highlightStudentName === item.student_name);
 
+                  const hasQuestionImage = !!item.question_image_url;
+                  const hasModelAnswerImage = !!item.model_answer_image_url;
+                  const studentFileIsImage = isImageFile(
+                    item.file_url,
+                    item.file_name
+                  );
+
                   return (
                     <div
                       key={item.id}
@@ -746,25 +953,151 @@ export default function TeacherSubmissionsPage() {
 
                           <div style={{ marginTop: "12px" }}>
                             {item.file_url ? (
-                              <a
-                                href={item.file_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  color: "#2563eb",
-                                  textDecoration: "none",
-                                  fontWeight: "600",
-                                  fontSize: "14px",
-                                }}
-                              >
-                                {item.file_name || "View File"}
-                              </a>
+                              studentFileIsImage ? (
+                                <div
+                                  style={{
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: "12px",
+                                    padding: "12px",
+                                    backgroundColor: "#ffffff",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: "13px",
+                                      fontWeight: "700",
+                                      color: "#111827",
+                                      marginBottom: "10px",
+                                    }}
+                                  >
+                                    Student Uploaded File
+                                  </div>
+
+                                  <img
+                                    src={item.file_url}
+                                    alt={item.file_name || "Student uploaded file"}
+                                    style={{
+                                      width: "100%",
+                                      maxWidth: "420px",
+                                      borderRadius: "10px",
+                                      border: "1px solid #d1d5db",
+                                      display: "block",
+                                      backgroundColor: "#f9fafb",
+                                    }}
+                                  />
+
+                                  <div
+                                    style={{
+                                      marginTop: "8px",
+                                      fontSize: "12px",
+                                      color: "#6b7280",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    {item.file_name || "Image file"}
+                                  </div>
+
+                                  <div style={{ marginTop: "10px" }}>
+                                    <a
+                                      href={item.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        display: "inline-block",
+                                        backgroundColor: "#2563eb",
+                                        color: "#ffffff",
+                                        textDecoration: "none",
+                                        borderRadius: "8px",
+                                        padding: "8px 12px",
+                                        fontSize: "13px",
+                                        fontWeight: "600",
+                                      }}
+                                    >
+                                      View Full Image
+                                    </a>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  style={{
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: "12px",
+                                    padding: "12px",
+                                    backgroundColor: "#ffffff",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: "13px",
+                                      fontWeight: "700",
+                                      color: "#111827",
+                                      marginBottom: "10px",
+                                    }}
+                                  >
+                                    Student Uploaded File
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      gap: "10px",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: "#4b5563",
+                                        fontSize: "13px",
+                                        wordBreak: "break-word",
+                                      }}
+                                    >
+                                      {item.file_name || "Uploaded file"}
+                                    </span>
+
+                                    <a
+                                      href={item.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        display: "inline-block",
+                                        backgroundColor: "#2563eb",
+                                        color: "#ffffff",
+                                        textDecoration: "none",
+                                        borderRadius: "8px",
+                                        padding: "8px 12px",
+                                        fontSize: "13px",
+                                        fontWeight: "600",
+                                      }}
+                                    >
+                                      View File
+                                    </a>
+                                  </div>
+                                </div>
+                              )
                             ) : (
                               <span style={{ color: "#6b7280", fontSize: "14px" }}>
                                 No file uploaded
                               </span>
                             )}
                           </div>
+
+                          {hasQuestionImage
+                            ? renderPreviewBlock(
+                                "Question Image",
+                                item.question_image_url,
+                                item.question_image_name
+                              )
+                            : null}
+
+                          {hasModelAnswerImage
+                            ? renderPreviewBlock(
+                                "Model Answer Image",
+                                item.model_answer_image_url,
+                                item.model_answer_image_name
+                              )
+                            : null}
                         </div>
 
                         <div
@@ -856,6 +1189,39 @@ export default function TeacherSubmissionsPage() {
                               >
                                 <strong>Corrected Answer:</strong>{" "}
                                 {item.corrected_answer}
+                              </div>
+                            ) : null}
+
+                            {item.work_question ? (
+                              <div
+                                style={{
+                                  marginTop: "6px",
+                                  padding: "10px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#f9fafb",
+                                  color: "#374151",
+                                  border: "1px solid #e5e7eb",
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                <strong>Question:</strong> {item.work_question}
+                              </div>
+                            ) : null}
+
+                            {item.work_model_answer ? (
+                              <div
+                                style={{
+                                  marginTop: "6px",
+                                  padding: "10px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#f0fdf4",
+                                  color: "#166534",
+                                  border: "1px solid #bbf7d0",
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                <strong>Model Answer:</strong>{" "}
+                                {item.work_model_answer}
                               </div>
                             ) : null}
                           </div>

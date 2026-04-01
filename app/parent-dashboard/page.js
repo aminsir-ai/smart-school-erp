@@ -16,6 +16,8 @@ export default function ParentDashboard() {
   const [notifications, setNotifications] = useState([]);
   const [isAllowed, setIsAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const [academicYearStart, setAcademicYearStart] = useState(null);
   const [monthFilter, setMonthFilter] = useState("All");
 
   useEffect(() => {
@@ -52,6 +54,10 @@ export default function ParentDashboard() {
     fetchData();
   }, [isAllowed, studentId]);
 
+  useEffect(() => {
+    setMonthFilter("All");
+  }, [academicYearStart]);
+
   function isSubmissionNewer(currentItem, nextItem) {
     const currentAttempt = Number(currentItem?.attempt_no || 0);
     const nextAttempt = Number(nextItem?.attempt_no || 0);
@@ -70,6 +76,69 @@ export default function ParentDashboard() {
     return nextTime > currentTime;
   }
 
+  function getAcademicYearStartFromDate(dateValue) {
+    if (!dateValue) return null;
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+
+    if (month >= 6) return year; // June to Dec
+    if (month >= 1 && month <= 4) return year - 1; // Jan to Apr belongs to previous academic year
+
+    return null; // May excluded
+  }
+
+  function getCurrentAcademicYearStart() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + 1;
+
+    if (month >= 6) return year;
+    return year - 1;
+  }
+
+  function isDateInAcademicYear(dateValue, startYear) {
+    if (!dateValue || !startYear) return false;
+
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return false;
+
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+
+    if (year === startYear && month >= 6 && month <= 12) return true;
+    if (year === startYear + 1 && month >= 1 && month <= 4) return true;
+
+    return false;
+  }
+
+  function getAcademicYearLabel(startYear) {
+    if (!startYear) return "-";
+    return `June-${startYear} to April-${startYear + 1}`;
+  }
+
+  function getAcademicMonthOptions(startYear) {
+    if (!startYear) return [{ value: "All", label: "All Months" }];
+
+    return [
+      { value: "All", label: "All Months" },
+      { value: `${startYear}-06`, label: `June ${startYear}` },
+      { value: `${startYear}-07`, label: `July ${startYear}` },
+      { value: `${startYear}-08`, label: `August ${startYear}` },
+      { value: `${startYear}-09`, label: `September ${startYear}` },
+      { value: `${startYear}-10`, label: `October ${startYear}` },
+      { value: `${startYear}-11`, label: `November ${startYear}` },
+      { value: `${startYear}-12`, label: `December ${startYear}` },
+      { value: `${startYear + 1}-01`, label: `January ${startYear + 1}` },
+      { value: `${startYear + 1}-02`, label: `February ${startYear + 1}` },
+      { value: `${startYear + 1}-03`, label: `March ${startYear + 1}` },
+      { value: `${startYear + 1}-04`, label: `April ${startYear + 1}` },
+    ];
+  }
+
   function getMonthKey(dateValue) {
     if (!dateValue) return "";
     const date = new Date(dateValue);
@@ -81,8 +150,10 @@ export default function ParentDashboard() {
 
   function getMonthLabel(monthKey) {
     if (!monthKey || monthKey === "All") return "All Months";
+
     const [year, month] = monthKey.split("-");
     const date = new Date(Number(year), Number(month) - 1, 1);
+
     return date.toLocaleString("en-IN", {
       month: "long",
       year: "numeric",
@@ -162,6 +233,29 @@ export default function ParentDashboard() {
       } else {
         setNotifications(notificationsData || []);
       }
+
+      const derivedYears = new Set();
+
+      (worksData || []).forEach((work) => {
+        const startYear = getAcademicYearStartFromDate(getWorkDate(work));
+        if (startYear) derivedYears.add(startYear);
+      });
+
+      (submissionsData || []).forEach((submission) => {
+        const startYear = getAcademicYearStartFromDate(
+          getSubmissionDate(submission)
+        );
+        if (startYear) derivedYears.add(startYear);
+      });
+
+      const currentAcademicYear = getCurrentAcademicYearStart();
+      derivedYears.add(currentAcademicYear);
+
+      const sortedYears = Array.from(derivedYears).sort((a, b) => b - a);
+
+      if (!academicYearStart && sortedYears.length > 0) {
+        setAcademicYearStart(sortedYears[0]);
+      }
     } catch (error) {
       console.log("PARENT DASHBOARD ERROR:", error);
       setStudent(null);
@@ -201,42 +295,56 @@ export default function ParentDashboard() {
     window.location.href = "/login";
   }
 
-  const monthOptions = useMemo(() => {
-    const keys = new Set();
+  const academicYearOptions = useMemo(() => {
+    const years = new Set();
 
     rawWorks.forEach((work) => {
-      const key = getMonthKey(getWorkDate(work));
-      if (key) keys.add(key);
+      const year = getAcademicYearStartFromDate(getWorkDate(work));
+      if (year) years.add(year);
     });
 
     rawSubmissions.forEach((submission) => {
-      const key = getMonthKey(getSubmissionDate(submission));
-      if (key) keys.add(key);
+      const year = getAcademicYearStartFromDate(getSubmissionDate(submission));
+      if (year) years.add(year);
     });
 
-    return [
-      "All",
-      ...Array.from(keys).sort((a, b) => (a < b ? 1 : -1)),
-    ];
+    years.add(getCurrentAcademicYearStart());
+
+    return Array.from(years).sort((a, b) => b - a);
   }, [rawWorks, rawSubmissions]);
 
+  const monthOptions = useMemo(() => {
+    return getAcademicMonthOptions(academicYearStart);
+  }, [academicYearStart]);
+
   const filteredWorks = useMemo(() => {
-    if (monthFilter === "All") return rawWorks;
+    if (!academicYearStart) return [];
 
     return rawWorks.filter((work) => {
-      const key = getMonthKey(getWorkDate(work));
-      return key === monthFilter;
+      const workDate = getWorkDate(work);
+
+      if (!isDateInAcademicYear(workDate, academicYearStart)) return false;
+
+      if (monthFilter === "All") return true;
+
+      return getMonthKey(workDate) === monthFilter;
     });
-  }, [rawWorks, monthFilter]);
+  }, [rawWorks, academicYearStart, monthFilter]);
 
   const filteredSubmissions = useMemo(() => {
-    if (monthFilter === "All") return rawSubmissions;
+    if (!academicYearStart) return [];
 
     return rawSubmissions.filter((submission) => {
-      const key = getMonthKey(getSubmissionDate(submission));
-      return key === monthFilter;
+      const submissionDate = getSubmissionDate(submission);
+
+      if (!isDateInAcademicYear(submissionDate, academicYearStart))
+        return false;
+
+      if (monthFilter === "All") return true;
+
+      return getMonthKey(submissionDate) === monthFilter;
     });
-  }, [rawSubmissions, monthFilter]);
+  }, [rawSubmissions, academicYearStart, monthFilter]);
 
   const groupedWorks = useMemo(() => {
     const grouped = {};
@@ -523,6 +631,7 @@ export default function ParentDashboard() {
     const performanceLabel = getPerformanceLabel(avgNumericScore);
     const remarks = getRemarks(avgNumericScore);
     const selectedMonthLabel = getMonthLabel(monthFilter);
+    const selectedAcademicYearLabel = getAcademicYearLabel(academicYearStart);
 
     const doc = new jsPDF();
     const logoData = await loadImageAsDataURL("/school-logo.png");
@@ -563,16 +672,17 @@ export default function ParentDashboard() {
     y = 42;
     doc.setDrawColor(200, 200, 200);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(14, y, 182, 32, 3, 3, "FD");
+    doc.roundedRect(14, y, 182, 38, 3, 3, "FD");
 
     addLabelValue(doc, "Parent:", parentName, 20, y + 8);
     addLabelValue(doc, "Student:", childName, 105, y + 8);
     addLabelValue(doc, "Class:", childClass, 20, y + 18);
     addLabelValue(doc, "Roll No:", rollNo, 105, y + 18);
     addLabelValue(doc, "Month:", selectedMonthLabel, 20, y + 28);
+    addLabelValue(doc, "Academic Year:", selectedAcademicYearLabel, 105, y + 28);
 
     // Grade and performance
-    y = 84;
+    y = 90;
     doc.setFillColor(254, 249, 195);
     doc.roundedRect(14, y, 182, 22, 3, 3, "FD");
 
@@ -584,7 +694,7 @@ export default function ParentDashboard() {
     doc.text(`Performance: ${performanceLabel}`, 20, y + 18);
 
     // Performance Summary
-    y = 118;
+    y = 124;
     addSectionTitle(doc, "Performance Summary", y);
 
     y += 10;
@@ -686,7 +796,7 @@ export default function ParentDashboard() {
 
     if (marksTableRows.length === 0) {
       doc.setFont("helvetica", "normal");
-      doc.text("No marks data available for the selected month.", 16, y + 2);
+      doc.text("No marks data available for the selected period.", 16, y + 2);
       y += 10;
     } else {
       marksTableRows.forEach((row) => {
@@ -846,7 +956,7 @@ export default function ParentDashboard() {
       { align: "center" }
     );
 
-    doc.save(`${childName}_monthly_report_card.pdf`);
+    doc.save(`${childName}_academic_report_card.pdf`);
   }
 
   if (!isAllowed) return null;
@@ -875,13 +985,27 @@ export default function ParentDashboard() {
 
               <div className="flex flex-wrap gap-3">
                 <select
+                  value={academicYearStart || ""}
+                  onChange={(e) =>
+                    setAcademicYearStart(Number(e.target.value))
+                  }
+                  className="rounded border border-gray-300 px-3 py-2"
+                >
+                  {academicYearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {getAcademicYearLabel(year)}
+                    </option>
+                  ))}
+                </select>
+
+                <select
                   value={monthFilter}
                   onChange={(e) => setMonthFilter(e.target.value)}
                   className="rounded border border-gray-300 px-3 py-2"
                 >
                   {monthOptions.map((item) => (
-                    <option key={item} value={item}>
-                      {getMonthLabel(item)}
+                    <option key={item.value} value={item.value}>
+                      {item.label}
                     </option>
                   ))}
                 </select>

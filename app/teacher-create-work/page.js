@@ -14,14 +14,21 @@ export default function TeacherCreateWorkPage() {
   const [className, setClassName] = useState("3rd");
   const [subjectName, setSubjectName] = useState("");
   const [subjects, setSubjects] = useState([]);
+
   const [title, setTitle] = useState("");
   const [question, setQuestion] = useState("");
   const [modelAnswer, setModelAnswer] = useState("");
+
+  const [questionFile, setQuestionFile] = useState(null);
+  const [modelFile, setModelFile] = useState(null);
+
   const [keywords, setKeywords] = useState("");
   const [dueDate, setDueDate] = useState("");
+
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // AUTH CHECK
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
 
@@ -30,16 +37,7 @@ export default function TeacherCreateWorkPage() {
       return;
     }
 
-    let user = null;
-
-    try {
-      user = JSON.parse(storedUser);
-    } catch (error) {
-      console.log("USER PARSE ERROR:", error);
-      localStorage.removeItem("erp_user");
-      window.location.href = "/login";
-      return;
-    }
+    const user = JSON.parse(storedUser);
 
     if (!user || user.role !== "teacher") {
       window.location.href = "/login";
@@ -51,89 +49,105 @@ export default function TeacherCreateWorkPage() {
     setIsAllowed(true);
   }, []);
 
+  // FETCH SUBJECTS
   useEffect(() => {
     if (!isAllowed) return;
 
     const fetchSubjects = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("subjects")
         .select("subject_name")
-        .eq("class_name", className)
-        .order("subject_name", { ascending: true });
+        .eq("class_name", className);
 
-      if (error) {
-        console.log("SUBJECT FETCH ERROR:", error);
-        setSubjects([]);
-        setSubjectName("");
-        return;
-      }
-
-      const subjectList = data || [];
-      setSubjects(subjectList);
-      setSubjectName(subjectList[0]?.subject_name || "");
+      const list = data || [];
+      setSubjects(list);
+      setSubjectName(list[0]?.subject_name || "");
     };
 
     fetchSubjects();
   }, [className, isAllowed]);
 
-  const handleCreateWork = async () => {
-    if (!title.trim() || !question.trim() || !subjectName.trim()) {
-      setMessage("Please fill class, subject, title and question");
-      return;
+  // FILE UPLOAD FUNCTION
+  async function uploadFile(file, folder) {
+    if (!file) return { url: "", name: "" };
+
+    const fileName = `${Date.now()}_${file.name}`;
+
+    const { error } = await supabase.storage
+      .from("homework-files")
+      .upload(`${folder}/${fileName}`, file);
+
+    if (error) {
+      console.log("UPLOAD ERROR:", error);
+      return { url: "", name: "" };
     }
 
-    if (!teacherName.trim() || !teacherId.trim()) {
-      setMessage("Teacher details missing. Please login again.");
+    const { data } = supabase.storage
+      .from("works-files")
+      .getPublicUrl(`${folder}/${fileName}`);
+
+    return {
+      url: data.publicUrl,
+      name: file.name,
+    };
+  }
+
+  // CREATE WORK
+  const handleCreateWork = async () => {
+    if (!title || !question || !subjectName) {
+      setMessage("Fill required fields");
       return;
     }
 
     setLoading(true);
     setMessage("");
 
+    // Upload files
+    const questionUpload = await uploadFile(questionFile, "question");
+    const modelUpload = await uploadFile(modelFile, "model");
+
     const payload = {
       class_name: className,
       subject_name: subjectName,
       type,
-      title: title.trim(),
-      question: question.trim(),
-      model_answer: modelAnswer.trim(),
-      keywords: keywords.trim(),
+      title,
+      question,
+      model_answer: modelAnswer,
+      keywords,
       due_date: dueDate || null,
       teacher_name: teacherName,
       teacher_id: teacherId,
+
+      question_file_url: questionUpload.url,
+      question_file_name: questionUpload.name,
+
+      model_answer_file_url: modelUpload.url,
+      model_answer_file_name: modelUpload.name,
     };
 
     const { error } = await supabase.from("works").insert([payload]);
 
     if (error) {
-      console.log("CREATE WORK ERROR:", error);
-      setMessage(`Error: ${error.message}`);
+      setMessage("Error: " + error.message);
       setLoading(false);
       return;
     }
 
-    setMessage("Work created successfully");
+    setMessage("✅ Work created successfully");
 
+    // RESET
     setTitle("");
     setQuestion("");
     setModelAnswer("");
     setKeywords("");
     setDueDate("");
+    setQuestionFile(null);
+    setModelFile(null);
+
     setLoading(false);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("erp_user");
-    window.location.href = "/login";
-  };
-
-  if (!isAllowed) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p className="text-lg text-gray-600">Checking access...</p>
-      </div>
-    );
-  }
+  if (!isAllowed) return null;
 
   return (
     <>
@@ -143,124 +157,92 @@ export default function TeacherCreateWorkPage() {
         <Sidebar role="teacher" />
 
         <div className="flex-1 p-6">
-          <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow">
-            <div className="mb-6 flex items-center justify-between">
-              <h1 className="text-3xl font-bold">Teacher - Create Work</h1>
+          <div className="mx-auto max-w-3xl bg-white p-6 rounded-xl shadow">
 
-              <button
-                onClick={handleLogout}
-                className="rounded bg-red-500 px-4 py-2 text-white"
-              >
-                Logout
-              </button>
-            </div>
+            <h1 className="text-2xl font-bold mb-6">Create Work</h1>
 
-            <div className="mb-4">
-              <label className="mb-2 block font-medium">Class</label>
-              <select
-                className="w-full rounded border p-3"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-              >
-                {["3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"].map(
-                  (c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  )
-                )}
-              </select>
-            </div>
+            {/* CLASS */}
+            <select
+              className="w-full border p-3 mb-3 rounded"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            >
+              {["3rd","4th","5th","6th","7th","8th","9th","10th"].map(c => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
 
-            <div className="mb-4">
-              <label className="mb-2 block font-medium">Subject</label>
-              <select
-                className="w-full rounded border p-3"
-                value={subjectName}
-                onChange={(e) => setSubjectName(e.target.value)}
-              >
-                {subjects.length === 0 ? (
-                  <option>No subjects</option>
-                ) : (
-                  subjects.map((s) => (
-                    <option key={s.subject_name} value={s.subject_name}>
-                      {s.subject_name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            {/* SUBJECT */}
+            <select
+              className="w-full border p-3 mb-3 rounded"
+              value={subjectName}
+              onChange={(e) => setSubjectName(e.target.value)}
+            >
+              {subjects.map(s => (
+                <option key={s.subject_name}>{s.subject_name}</option>
+              ))}
+            </select>
 
-            <div className="mb-4">
-              <label className="mb-2 block font-medium">Type</label>
-              <select
-                className="w-full rounded border p-3"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-              >
-                <option value="homework">Homework</option>
-                <option value="classwork">Classwork</option>
-              </select>
-            </div>
+            {/* TITLE */}
+            <input
+              placeholder="Title"
+              className="w-full border p-3 mb-3 rounded"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
 
-            <div className="mb-4">
-              <input
-                placeholder="Title"
-                className="w-full rounded border p-3"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
+            {/* QUESTION */}
+            <textarea
+              placeholder="Question"
+              className="w-full border p-3 mb-2 rounded"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
 
-            <div className="mb-4">
-              <textarea
-                rows={4}
-                placeholder="Question"
-                className="w-full rounded border p-3"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-              />
-            </div>
+            <input
+              type="file"
+              onChange={(e) => setQuestionFile(e.target.files[0])}
+              className="mb-4"
+            />
 
-            <div className="mb-4">
-              <textarea
-                rows={4}
-                placeholder="Model Answer"
-                className="w-full rounded border p-3"
-                value={modelAnswer}
-                onChange={(e) => setModelAnswer(e.target.value)}
-              />
-            </div>
+            {/* MODEL ANSWER */}
+            <textarea
+              placeholder="Model Answer"
+              className="w-full border p-3 mb-2 rounded"
+              value={modelAnswer}
+              onChange={(e) => setModelAnswer(e.target.value)}
+            />
 
-            <div className="mb-4">
-              <input
-                placeholder="Keywords (comma separated)"
-                className="w-full rounded border p-3"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-              />
-            </div>
+            <input
+              type="file"
+              onChange={(e) => setModelFile(e.target.files[0])}
+              className="mb-4"
+            />
 
-            <div className="mb-5">
-              <input
-                type="date"
-                className="w-full rounded border p-3"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
+            {/* KEYWORDS */}
+            <input
+              placeholder="Keywords"
+              className="w-full border p-3 mb-3 rounded"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+            />
+
+            {/* DATE */}
+            <input
+              type="date"
+              className="w-full border p-3 mb-4 rounded"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
 
             <button
               onClick={handleCreateWork}
-              disabled={loading}
-              className="rounded bg-blue-600 px-6 py-3 text-white"
+              className="bg-blue-600 text-white px-6 py-3 rounded"
             >
               {loading ? "Creating..." : "Create Work"}
             </button>
 
-            {message ? (
-              <p className="mt-4 text-sm text-gray-700">{message}</p>
-            ) : null}
+            {message && <p className="mt-4">{message}</p>}
           </div>
         </div>
       </div>

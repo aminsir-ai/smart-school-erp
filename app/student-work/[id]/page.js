@@ -91,12 +91,7 @@ export default function StudentWorkDetailPage() {
           setSubmission(null);
         } else {
           setSubmission(submissionData || null);
-
-          if (submissionData?.answer_text) {
-            setAnswerText(submissionData.answer_text);
-          } else {
-            setAnswerText("");
-          }
+          setAnswerText(submissionData?.answer_text || "");
         }
       }
 
@@ -154,6 +149,33 @@ export default function StudentWorkDetailPage() {
       work?.model_answer ||
       ""
     );
+  }
+
+  function isImageFile(urlOrName) {
+    const value = String(urlOrName || "").toLowerCase();
+    return (
+      value.includes(".png") ||
+      value.includes(".jpg") ||
+      value.includes(".jpeg") ||
+      value.includes(".webp") ||
+      value.includes(".gif")
+    );
+  }
+
+  function getQuestionFileUrl() {
+    return work?.question_file_url || "";
+  }
+
+  function getQuestionFileName() {
+    return work?.question_file_name || "Question File";
+  }
+
+  function getModelAnswerFileUrl() {
+    return work?.model_answer_file_url || "";
+  }
+
+  function getModelAnswerFileName() {
+    return work?.model_answer_file_name || "Model Answer File";
   }
 
   async function uploadAttachment(file) {
@@ -298,6 +320,14 @@ export default function StudentWorkDetailPage() {
   const referenceAnswer = getReferenceAnswer();
   const hasPreviousFile = !!submission?.file_url && !removePreviousFile;
 
+  const questionFileUrl = getQuestionFileUrl();
+  const questionFileName = getQuestionFileName();
+  const hasQuestionFile = !!questionFileUrl;
+
+  const modelAnswerFileUrl = getModelAnswerFileUrl();
+  const modelAnswerFileName = getModelAnswerFileName();
+  const hasModelAnswerFile = !!modelAnswerFileUrl;
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Header name={studentName} />
@@ -330,9 +360,49 @@ export default function StudentWorkDetailPage() {
               </div>
 
               <div className="rounded-lg border bg-gray-50 p-4">
+                <h2 className="mb-3 text-lg font-semibold text-gray-800">
+                  Question
+                </h2>
+
                 <p className="whitespace-pre-wrap text-gray-700">
                   {work.question || work.description || "No question available"}
                 </p>
+
+                {hasQuestionFile ? (
+                  <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-semibold text-blue-700">
+                      Question Attachment
+                    </h3>
+
+                    {isImageFile(questionFileUrl) || isImageFile(questionFileName) ? (
+                      <div className="space-y-3">
+                        <img
+                          src={questionFileUrl}
+                          alt="Question Attachment"
+                          className="max-h-[500px] w-full rounded border object-contain"
+                        />
+
+                        <a
+                          href={questionFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block text-sm font-medium text-blue-600 underline"
+                        >
+                          Open Question Image in New Tab
+                        </a>
+                      </div>
+                    ) : (
+                      <a
+                        href={questionFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-sm font-medium text-blue-600 underline"
+                      >
+                        View Question File: {questionFileName}
+                      </a>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -383,6 +453,43 @@ export default function StudentWorkDetailPage() {
                       <p className="whitespace-pre-wrap text-sm text-green-900">
                         {referenceAnswer}
                       </p>
+                    </div>
+                  ) : null}
+
+                  {hasModelAnswerFile ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                      <h3 className="mb-3 text-sm font-semibold text-emerald-800">
+                        Model Answer Attachment
+                      </h3>
+
+                      {isImageFile(modelAnswerFileUrl) ||
+                      isImageFile(modelAnswerFileName) ? (
+                        <div className="space-y-3">
+                          <img
+                            src={modelAnswerFileUrl}
+                            alt="Model Answer Attachment"
+                            className="max-h-[500px] w-full rounded border object-contain"
+                          />
+
+                          <a
+                            href={modelAnswerFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block text-sm font-medium text-emerald-700 underline"
+                          >
+                            Open Model Answer Image in New Tab
+                          </a>
+                        </div>
+                      ) : (
+                        <a
+                          href={modelAnswerFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block text-sm font-medium text-emerald-700 underline"
+                        >
+                          View Model Answer File: {modelAnswerFileName}
+                        </a>
+                      )}
                     </div>
                   ) : null}
 

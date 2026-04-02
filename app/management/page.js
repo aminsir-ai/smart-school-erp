@@ -6,6 +6,7 @@ import Sidebar from "@/app/components/Sidebar";
 
 export default function ManagementPage() {
   const [userName, setUserName] = useState("Management");
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -19,11 +20,13 @@ export default function ManagementPage() {
       const user = JSON.parse(storedUser);
 
       if (!user) {
+        localStorage.removeItem("erp_user");
         window.location.href = "/login";
         return;
       }
 
       setUserName(user.name || "Management");
+      setIsCheckingAuth(false);
     } catch (error) {
       console.error("User parse error:", error);
       localStorage.removeItem("erp_user");
@@ -40,11 +43,22 @@ export default function ManagementPage() {
     { title: "Outstanding Fees", value: "₹0" },
   ];
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="bg-white border rounded-xl shadow-sm px-6 py-4 text-gray-700 font-medium">
+          Loading Management Dashboard...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       <Header />
       <div className="flex">
         <Sidebar />
+
         <main className="flex-1 p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
             <div className="bg-white rounded-xl shadow-sm border p-4 md:p-6 mb-6">

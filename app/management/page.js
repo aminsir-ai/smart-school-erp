@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
-import { supabase } from "@/lib/supabaseclient";
+import { supabase } from "@/lib/supabase";
 
 function getTodayDate() {
   const today = new Date();
@@ -108,13 +108,14 @@ export default function ManagementPage() {
       setIsSavingAttendance(true);
       setAttendanceMessage("");
 
+      const cleanTeacherName = teacherName.trim();
+
       const payload = {
         teacher_id: null,
-        teacher_name: teacherName.trim(),
+        teacher_name: cleanTeacherName,
         attendance_date: attendanceDate,
         status,
-        absent_reason:
-          status === "Present" ? "" : absentReason.trim(),
+        absent_reason: status === "Present" ? "" : absentReason.trim(),
         remarks: remarks.trim(),
         marked_by: userName,
         updated_at: new Date().toISOString(),
@@ -123,7 +124,7 @@ export default function ManagementPage() {
       const { data: existingRow, error: existingError } = await supabase
         .from("teacher_attendance")
         .select("id")
-        .eq("teacher_name", teacherName.trim())
+        .eq("teacher_name", cleanTeacherName)
         .eq("attendance_date", attendanceDate)
         .maybeSingle();
 

@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function Sidebar({ role = "student" }) {
+export default function Sidebar({ role }) {
   const pathname = usePathname();
+
+  const [resolvedRole, setResolvedRole] = useState(role || "student");
   const [unreadCount, setUnreadCount] = useState(0);
   const [teacherId, setTeacherId] = useState("");
 
@@ -16,15 +18,19 @@ export default function Sidebar({ role = "student" }) {
 
     try {
       const user = JSON.parse(storedUser);
+
+      const finalRole = role || user?.role || "student";
       const resolvedTeacherId = user?.teacher_id || user?.id || "";
+
+      setResolvedRole(finalRole);
       setTeacherId(String(resolvedTeacherId).trim());
     } catch (error) {
       console.log("SIDEBAR USER PARSE ERROR:", error);
     }
-  }, []);
+  }, [role]);
 
   useEffect(() => {
-    if (role !== "teacher" || !teacherId) return;
+    if (resolvedRole !== "teacher" || !teacherId) return;
 
     fetchUnreadCount();
 
@@ -33,7 +39,7 @@ export default function Sidebar({ role = "student" }) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [role, teacherId]);
+  }, [resolvedRole, teacherId]);
 
   async function fetchUnreadCount() {
     try {
@@ -75,16 +81,23 @@ export default function Sidebar({ role = "student" }) {
 
   const adminMenu = [
     { label: "Dashboard", path: "/admin-dashboard" },
-
     { label: "Admin Attendance", path: "/admin-teacher-attendance" },
     { label: "Admin Fees", path: "/admin-fees" },
     { label: "Admin Expenditure", path: "/admin-expenditure" },
     { label: "Admin Outstanding", path: "/admin-outstanding-fees" },
-
     { label: "Management Dashboard", path: "/management" },
     { label: "Monthly Summary", path: "/management-monthly" },
-
     { label: "Add User", path: "/add-user" },
+    { label: "Profile", path: "/admin-profile" },
+  ];
+
+  const managementMenu = [
+    { label: "Dashboard", path: "/management" },
+    { label: "Monthly Summary", path: "/management-monthly" },
+    { label: "Admin Attendance", path: "/admin-teacher-attendance" },
+    { label: "Admin Fees", path: "/admin-fees" },
+    { label: "Admin Expenditure", path: "/admin-expenditure" },
+    { label: "Admin Outstanding", path: "/admin-outstanding-fees" },
     { label: "Profile", path: "/admin-profile" },
   ];
 
@@ -95,24 +108,26 @@ export default function Sidebar({ role = "student" }) {
     { label: "Profile", path: "/parent-dashboard" },
   ];
 
-  const menu =
-    role === "teacher"
-      ? teacherMenu
-      : role === "admin"
-      ? adminMenu
-      : role === "parent"
-      ? parentMenu
-      : studentMenu;
+  const menu = useMemo(() => {
+    if (resolvedRole === "teacher") return teacherMenu;
+    if (resolvedRole === "admin") return adminMenu;
+    if (resolvedRole === "management") return managementMenu;
+    if (resolvedRole === "parent") return parentMenu;
+    return studentMenu;
+  }, [resolvedRole]);
 
   return (
     <div className="w-64 min-h-screen bg-gray-900 p-4 text-white">
-      <h2 className="mb-6 text-xl font-bold">Menu</h2>
+      <h2 className="mb-2 text-xl font-bold">Menu</h2>
+      <p className="mb-6 text-xs uppercase tracking-wide text-gray-400">
+        {resolvedRole} panel
+      </p>
 
       <ul className="space-y-3">
         {menu.map((item) => {
           const isActive = pathname === item.path;
           const showBadge =
-            role === "teacher" &&
+            resolvedRole === "teacher" &&
             item.path === "/teacher-notifications" &&
             unreadCount > 0;
 

@@ -1,8 +1,34 @@
 "use client";
 
-export default function Header({ name = "User" }) {
+import { useEffect, useState } from "react";
+
+export default function Header({ name }) {
+  const [userName, setUserName] = useState(name || "User");
+
+  useEffect(() => {
+    if (name) {
+      setUserName(name);
+      return;
+    }
+
+    const storedUser = localStorage.getItem("erp_user");
+
+    if (!storedUser) {
+      setUserName("User");
+      return;
+    }
+
+    try {
+      const user = JSON.parse(storedUser);
+      setUserName(user?.name || user?.full_name || "User");
+    } catch (error) {
+      console.log("HEADER USER PARSE ERROR:", error);
+      setUserName("User");
+    }
+  }, [name]);
+
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    localStorage.removeItem("erp_user");
     window.location.href = "/login";
   };
 
@@ -25,7 +51,7 @@ export default function Header({ name = "User" }) {
 
       <div className="flex items-center gap-4">
         <span className="text-sm font-medium">
-          👋 Welcome, {name}
+          👋 Welcome, {userName}
         </span>
 
         <button

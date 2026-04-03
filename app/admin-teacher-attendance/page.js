@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
+import { getDefaultRouteByRole } from "@/lib/erpAccess";
 
 function getTodayDate() {
   const today = new Date();
@@ -15,6 +16,7 @@ function getTodayDate() {
 
 export default function AdminTeacherAttendancePage() {
   const [userName, setUserName] = useState("Admin");
+  const [userRole, setUserRole] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [attendanceDate, setAttendanceDate] = useState(getTodayDate());
@@ -39,16 +41,24 @@ export default function AdminTeacherAttendancePage() {
     try {
       const user = JSON.parse(storedUser);
 
-      if (!user) {
+      if (!user || !user.role) {
         localStorage.removeItem("erp_user");
         window.location.href = "/login";
         return;
       }
 
-      setUserName(user.name || "Admin");
+      setUserName(user.name || user.full_name || "Admin");
+      setUserRole(user.role || "");
+
+      // Strict admin-only access
+      if (user.role !== "admin") {
+        window.location.href = getDefaultRouteByRole(user.role);
+        return;
+      }
+
       setIsCheckingAuth(false);
     } catch (error) {
-      console.error("User parse error:", error);
+      console.error("Admin teacher attendance access error:", error);
       localStorage.removeItem("erp_user");
       window.location.href = "/login";
     }
@@ -205,7 +215,7 @@ export default function AdminTeacherAttendancePage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Header />
+      <Header name={userName} />
       <div className="flex">
         <Sidebar />
 

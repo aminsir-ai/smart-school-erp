@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
+import { requirePageAccess } from "@/lib/requirePageAccess";
 
 function getTodayDate() {
   const today = new Date();
@@ -40,38 +41,12 @@ export default function ManagementPage() {
   const [outstandingMessage, setOutstandingMessage] = useState("");
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("erp_user");
-
-    if (!storedUser) {
-      window.location.href = "/login";
-      return;
-    }
-
-    try {
-      const user = JSON.parse(storedUser);
-
-      if (!user || !user.role) {
-        localStorage.removeItem("erp_user");
-        window.location.href = "/login";
-        return;
-      }
-
-      const allowedRoles = ["admin", "management", "teacher"];
-
-      if (!allowedRoles.includes(user.role)) {
-        localStorage.removeItem("erp_user");
-        window.location.href = "/login";
-        return;
-      }
-
-      setUserRole(user.role);
-      setUserName(user.name || user.full_name || "User");
-      setIsCheckingAuth(false);
-    } catch (error) {
-      console.error("User parse error:", error);
-      localStorage.removeItem("erp_user");
-      window.location.href = "/login";
-    }
+    requirePageAccess(
+      "/management",
+      setUserName,
+      setUserRole,
+      setIsCheckingAuth
+    );
   }, []);
 
   useEffect(() => {
@@ -271,28 +246,19 @@ export default function ManagementPage() {
 
   const canViewFinance = userRole === "admin" || userRole === "management";
 
-  const dashboardTitle =
-    userRole === "teacher" ? "Teacher Smart Overview" : "Management Dashboard";
+  const dashboardTitle = "Management Dashboard";
 
   const dashboardSubtitle =
-    userRole === "teacher"
-      ? "View attendance summary and school status overview."
-      : "View attendance, fee collection, expenditure, outstanding reports, and smart status.";
+    "View attendance, fee collection, expenditure, outstanding reports, and smart status.";
 
-  const summaryCards = canViewFinance
-    ? [
-        { title: "Total Teachers Marked", value: String(totalTeachersMarked) },
-        { title: "Present Today", value: String(presentTodayCount) },
-        { title: "Absent Today", value: String(absentTodayCount) },
-        { title: "Fees Collected", value: formatCurrency(totalFeesCollected) },
-        { title: "Expenditure", value: formatCurrency(totalExpenditure) },
-        { title: "Outstanding Fees", value: formatCurrency(totalOutstanding) },
-      ]
-    : [
-        { title: "Total Teachers Marked", value: String(totalTeachersMarked) },
-        { title: "Present Today", value: String(presentTodayCount) },
-        { title: "Absent Today", value: String(absentTodayCount) },
-      ];
+  const summaryCards = [
+    { title: "Total Teachers Marked", value: String(totalTeachersMarked) },
+    { title: "Present Today", value: String(presentTodayCount) },
+    { title: "Absent Today", value: String(absentTodayCount) },
+    { title: "Fees Collected", value: formatCurrency(totalFeesCollected) },
+    { title: "Expenditure", value: formatCurrency(totalExpenditure) },
+    { title: "Outstanding Fees", value: formatCurrency(totalOutstanding) },
+  ];
 
   const smartAlerts = useMemo(() => {
     const alerts = [];
@@ -524,47 +490,32 @@ export default function ManagementPage() {
     };
   }
 
-  const riskCards = canViewFinance
-    ? [
-        {
-          title: "Overall Status",
-          value: overallRisk.label,
-          tone: overallRisk.tone,
-          note: `${highAlertsCount} high, ${mediumAlertsCount} medium alerts`,
-        },
-        {
-          title: "Attendance Risk",
-          value: attendanceRisk.label,
-          tone: attendanceRisk.tone,
-          note: `${absentTodayCount} absent / leave / half day`,
-        },
-        {
-          title: "Finance Risk",
-          value: financeRisk.label,
-          tone: financeRisk.tone,
-          note: `Fees ${formatCurrency(totalFeesCollected)} vs Expense ${formatCurrency(totalExpenditure)}`,
-        },
-        {
-          title: "Dues Risk",
-          value: duesRisk.label,
-          tone: duesRisk.tone,
-          note: `${pendingStudentsCount} pending students`,
-        },
-      ]
-    : [
-        {
-          title: "Overall Status",
-          value: overallRisk.label,
-          tone: overallRisk.tone,
-          note: `${highAlertsCount} high, ${mediumAlertsCount} medium alerts`,
-        },
-        {
-          title: "Attendance Risk",
-          value: attendanceRisk.label,
-          tone: attendanceRisk.tone,
-          note: `${absentTodayCount} absent / leave / half day`,
-        },
-      ];
+  const riskCards = [
+    {
+      title: "Overall Status",
+      value: overallRisk.label,
+      tone: overallRisk.tone,
+      note: `${highAlertsCount} high, ${mediumAlertsCount} medium alerts`,
+    },
+    {
+      title: "Attendance Risk",
+      value: attendanceRisk.label,
+      tone: attendanceRisk.tone,
+      note: `${absentTodayCount} absent / leave / half day`,
+    },
+    {
+      title: "Finance Risk",
+      value: financeRisk.label,
+      tone: financeRisk.tone,
+      note: `Fees ${formatCurrency(totalFeesCollected)} vs Expense ${formatCurrency(totalExpenditure)}`,
+    },
+    {
+      title: "Dues Risk",
+      value: duesRisk.label,
+      tone: duesRisk.tone,
+      note: `${pendingStudentsCount} pending students`,
+    },
+  ];
 
   if (isCheckingAuth) {
     return (
@@ -627,13 +578,7 @@ export default function ManagementPage() {
                 </div>
               </div>
 
-              <div
-                className={`grid gap-4 ${
-                  canViewFinance
-                    ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
-                    : "grid-cols-1 sm:grid-cols-2"
-                }`}
-              >
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
                 {riskCards.map((card, index) => {
                   const styles = getRiskCardStyles(card.tone);
 

@@ -26,14 +26,17 @@ export default function ManagementPage() {
   const [attendanceList, setAttendanceList] = useState([]);
   const [feePayments, setFeePayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [outstandingFees, setOutstandingFees] = useState([]);
 
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [isLoadingFees, setIsLoadingFees] = useState(false);
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
+  const [isLoadingOutstanding, setIsLoadingOutstanding] = useState(false);
 
   const [attendanceMessage, setAttendanceMessage] = useState("");
   const [feesMessage, setFeesMessage] = useState("");
   const [expenseMessage, setExpenseMessage] = useState("");
+  const [outstandingMessage, setOutstandingMessage] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -66,6 +69,7 @@ export default function ManagementPage() {
       fetchAttendance(selectedDate);
       fetchFeePayments(selectedDate);
       fetchExpenses(selectedDate);
+      fetchOutstandingFees();
     }
   }, [selectedDate, isCheckingAuth]);
 
@@ -153,6 +157,34 @@ export default function ManagementPage() {
     }
   }
 
+  async function fetchOutstandingFees() {
+    try {
+      setIsLoadingOutstanding(true);
+      setOutstandingMessage("");
+
+      const { data, error } = await supabase
+        .from("student_fee_dues")
+        .select("*")
+        .order("class_name", { ascending: true })
+        .order("student_name", { ascending: true });
+
+      if (error) {
+        console.error("Outstanding fees fetch error:", error);
+        setOutstandingMessage("Failed to load outstanding fees report.");
+        setOutstandingFees([]);
+        return;
+      }
+
+      setOutstandingFees(data || []);
+    } catch (error) {
+      console.error("Unexpected outstanding fetch error:", error);
+      setOutstandingMessage("Something went wrong while loading outstanding fees report.");
+      setOutstandingFees([]);
+    } finally {
+      setIsLoadingOutstanding(false);
+    }
+  }
+
   const totalTeachersMarked = useMemo(() => {
     return attendanceList.length;
   }, [attendanceList]);
@@ -187,13 +219,26 @@ export default function ManagementPage() {
     return expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }, [expenses]);
 
+  const totalOutstanding = useMemo(() => {
+    return outstandingFees.reduce(
+      (sum, item) => sum + Number(item.outstanding_amount || 0),
+      0
+    );
+  }, [outstandingFees]);
+
+  const pendingStudentsCount = useMemo(() => {
+    return outstandingFees.filter(
+      (item) => Number(item.outstanding_amount || 0) > 0
+    ).length;
+  }, [outstandingFees]);
+
   const summaryCards = [
     { title: "Total Teachers Marked", value: String(totalTeachersMarked) },
     { title: "Present Today", value: String(presentTodayCount) },
     { title: "Absent Today", value: String(absentTodayCount) },
     { title: "Fees Collected", value: formatCurrency(totalFeesCollected) },
     { title: "Expenditure", value: formatCurrency(totalExpenditure) },
-    { title: "Outstanding Fees", value: "₹0" },
+    { title: "Outstanding Fees", value: formatCurrency(totalOutstanding) },
   ];
 
   if (isCheckingAuth) {
@@ -566,14 +611,113 @@ export default function ManagementPage() {
               </section>
 
               <section className="bg-white rounded-xl shadow-sm border p-5 xl:col-span-2">
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">
-                  Outstanding Fees Report
-                </h2>
-                <p className="text-gray-600 text-sm mb-4">
-                  Outstanding fee summary will appear here after admin fee due updates are added.
-                </p>
-                <div className="border rounded-lg p-4 bg-gray-50 text-gray-500 text-sm">
-                  No outstanding fees report data loaded yet.
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-800">
+                      Outstanding Fees Report
+                    </h2>
+                    <p className="text-gray-600 text-sm mt-1">
+                      Student-wise outstanding fees summary.
+                    </p>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Pending Students:{" "}
+                    <span className="font-semibold text-gray-800">
+                      {pendingStudentsCount}
+                    </span>
+                  </div>
+                </div>
+
+                {outstandingMessage ? (
+                  <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                    {outstandingMessage}
+                  </div>
+                ) : null}
+
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">
+                        Outstanding Fees List
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Total Outstanding: {formatCurrency(totalOutstanding)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isLoadingOutstanding ? (
+                    <div className="p-4 text-sm text-gray-500">
+                      Loading outstanding fees report...
+                    </div>
+                  ) : outstandingFees.length === 0 ? (
+                    <div className="p-4 text-sm text-gray-500">
+                      No outstanding fee records found yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-4 py-3 border-b">Student</th>
+                            <th className="text-left px-4 py-3 border-b">Class</th>
+                            <th className="text-left px-4 py-3 border-b">Monthly Fee</th>
+                            <th className="text-left px-4 py-3 border-b">Total Due</th>
+                            <th className="text-left px-4 py-3 border-b">Paid</th>
+                            <th className="text-left px-4 py-3 border-b">Outstanding</th>
+                            <th className="text-left px-4 py-3 border-b">Last Paid Month</th>
+                            <th className="text-left px-4 py-3 border-b">Status</th>
+                            <th className="text-left px-4 py-3 border-b">Parent Phone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {outstandingFees.map((item) => (
+                            <tr key={item.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 border-b font-medium text-gray-800">
+                                {item.student_name || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.class_name || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {formatCurrency(item.monthly_fee)}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {formatCurrency(item.total_fee_due)}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {formatCurrency(item.total_paid)}
+                              </td>
+                              <td className="px-4 py-3 border-b font-semibold text-gray-800">
+                                {formatCurrency(item.outstanding_amount)}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.last_paid_month || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                <span
+                                  className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                                    item.status === "Clear"
+                                      ? "bg-green-100 text-green-700"
+                                      : item.status === "Partial"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : item.status === "Overdue"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-orange-100 text-orange-700"
+                                  }`}
+                                >
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.parent_phone || "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
             </div>

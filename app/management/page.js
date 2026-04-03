@@ -25,12 +25,15 @@ export default function ManagementPage() {
 
   const [attendanceList, setAttendanceList] = useState([]);
   const [feePayments, setFeePayments] = useState([]);
+  const [expenses, setExpenses] = useState([]);
 
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [isLoadingFees, setIsLoadingFees] = useState(false);
+  const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
 
   const [attendanceMessage, setAttendanceMessage] = useState("");
   const [feesMessage, setFeesMessage] = useState("");
+  const [expenseMessage, setExpenseMessage] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -62,6 +65,7 @@ export default function ManagementPage() {
     if (!isCheckingAuth) {
       fetchAttendance(selectedDate);
       fetchFeePayments(selectedDate);
+      fetchExpenses(selectedDate);
     }
   }, [selectedDate, isCheckingAuth]);
 
@@ -121,6 +125,34 @@ export default function ManagementPage() {
     }
   }
 
+  async function fetchExpenses(date) {
+    try {
+      setIsLoadingExpenses(true);
+      setExpenseMessage("");
+
+      const { data, error } = await supabase
+        .from("expenditures")
+        .select("*")
+        .eq("expense_date", date)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Expense fetch error:", error);
+        setExpenseMessage("Failed to load expenditure report.");
+        setExpenses([]);
+        return;
+      }
+
+      setExpenses(data || []);
+    } catch (error) {
+      console.error("Unexpected expense fetch error:", error);
+      setExpenseMessage("Something went wrong while loading expenditure report.");
+      setExpenses([]);
+    } finally {
+      setIsLoadingExpenses(false);
+    }
+  }
+
   const totalTeachersMarked = useMemo(() => {
     return attendanceList.length;
   }, [attendanceList]);
@@ -151,12 +183,16 @@ export default function ManagementPage() {
     return feePayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }, [feePayments]);
 
+  const totalExpenditure = useMemo(() => {
+    return expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }, [expenses]);
+
   const summaryCards = [
     { title: "Total Teachers Marked", value: String(totalTeachersMarked) },
     { title: "Present Today", value: String(presentTodayCount) },
     { title: "Absent Today", value: String(absentTodayCount) },
     { title: "Fees Collected", value: formatCurrency(totalFeesCollected) },
-    { title: "Expenditure", value: "₹0" },
+    { title: "Expenditure", value: formatCurrency(totalExpenditure) },
     { title: "Outstanding Fees", value: "₹0" },
   ];
 
@@ -457,10 +493,75 @@ export default function ManagementPage() {
                   Expenditure Report
                 </h2>
                 <p className="text-gray-600 text-sm mb-4">
-                  Expenditure summary will appear here after admin entry page is added.
+                  Daily expenditure report for {selectedDate}.
                 </p>
-                <div className="border rounded-lg p-4 bg-gray-50 text-gray-500 text-sm">
-                  No expenditure report data loaded yet.
+
+                {expenseMessage ? (
+                  <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                    {expenseMessage}
+                  </div>
+                ) : null}
+
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">
+                        Expenditure List
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Total Expenditure: {formatCurrency(totalExpenditure)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isLoadingExpenses ? (
+                    <div className="p-4 text-sm text-gray-500">
+                      Loading expenditure report...
+                    </div>
+                  ) : expenses.length === 0 ? (
+                    <div className="p-4 text-sm text-gray-500">
+                      No expenditure entries found for this date.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-4 py-3 border-b">Category</th>
+                            <th className="text-left px-4 py-3 border-b">Description</th>
+                            <th className="text-left px-4 py-3 border-b">Amount</th>
+                            <th className="text-left px-4 py-3 border-b">Paid To</th>
+                            <th className="text-left px-4 py-3 border-b">Mode</th>
+                            <th className="text-left px-4 py-3 border-b">Added By</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expenses.map((item) => (
+                            <tr key={item.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 border-b font-medium text-gray-800">
+                                {item.category || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.description || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b font-semibold text-gray-800">
+                                {formatCurrency(item.amount)}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.paid_to || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.payment_mode || "-"}
+                              </td>
+                              <td className="px-4 py-3 border-b">
+                                {item.added_by || "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
 

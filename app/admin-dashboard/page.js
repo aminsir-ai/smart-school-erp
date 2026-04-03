@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
+import { requirePageAccess } from "@/lib/requirePageAccess";
 import {
   BarChart,
   Bar,
@@ -20,6 +21,10 @@ function formatCurrency(value) {
 }
 
 export default function AdminDashboard() {
+  const [userName, setUserName] = useState("Admin");
+  const [userRole, setUserRole] = useState("");
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   const [students, setStudents] = useState(0);
   const [teachers, setTeachers] = useState(0);
   const [todayFees, setTodayFees] = useState(0);
@@ -28,9 +33,21 @@ export default function AdminDashboard() {
 
   const today = new Date().toISOString().split("T")[0];
 
+  // 🔒 Step 16 Access Control
   useEffect(() => {
-    fetchDashboardData();
+    requirePageAccess(
+      "/admin-dashboard",
+      setUserName,
+      setUserRole,
+      setIsCheckingAuth
+    );
   }, []);
+
+  useEffect(() => {
+    if (!isCheckingAuth) {
+      fetchDashboardData();
+    }
+  }, [isCheckingAuth]);
 
   async function fetchDashboardData() {
     try {
@@ -81,12 +98,23 @@ export default function AdminDashboard() {
     },
   ];
 
+  // ⏳ Loading screen during auth check
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="bg-white border rounded-xl shadow-sm px-6 py-4 text-gray-700 font-medium">
+          Loading Admin Dashboard...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <Header name="Admin" />
+      <Header name={userName} />
 
       <div className="flex min-h-screen bg-gray-100">
-        <Sidebar role="admin" />
+        <Sidebar />
 
         <div className="flex-1 p-6">
           <div className="mx-auto max-w-7xl">
@@ -153,48 +181,25 @@ export default function AdminDashboard() {
             </div>
 
             <div className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    Today&apos;s Financial Chart
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    Bright visual comparison of fees collected and expenditure.
-                  </p>
-                </div>
-
+              <div className="mb-4 flex justify-between">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Today's Financial Chart
+                </h2>
                 <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
                   Date: {today}
                 </div>
               </div>
 
-              <div className="h-80 w-full rounded-xl bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartData}
-                    margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
-                  >
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <Tooltip
-                      formatter={(value) => formatCurrency(value)}
-                      contentStyle={{
-                        borderRadius: "12px",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    />
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
                     <Legend />
-                    <Bar
-                      dataKey="Fees"
-                      fill="#22c55e"
-                      radius={[8, 8, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Expense"
-                      fill="#ef4444"
-                      radius={[8, 8, 0, 0]}
-                    />
+                    <Bar dataKey="Fees" fill="#22c55e" />
+                    <Bar dataKey="Expense" fill="#ef4444" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -206,8 +211,7 @@ export default function AdminDashboard() {
               </h2>
               <p className="text-gray-600">
                 Use the sidebar to manage attendance, fees, expenditures,
-                outstanding dues, and management reports. This panel is designed
-                to give admin a fast and clear daily operating snapshot.
+                outstanding dues, and management reports.
               </p>
             </div>
           </div>

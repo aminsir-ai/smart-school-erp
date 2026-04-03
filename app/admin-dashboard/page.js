@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
-import { requirePageAccess } from "@/lib/requirePageAccess";
+import { getDefaultRouteByRole } from "@/lib/erpAccess";
 import {
   BarChart,
   Bar,
@@ -33,14 +33,38 @@ export default function AdminDashboard() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // 🔒 Step 16 Access Control
   useEffect(() => {
-    requirePageAccess(
-      "/admin-dashboard",
-      setUserName,
-      setUserRole,
-      setIsCheckingAuth
-    );
+    const storedUser = localStorage.getItem("erp_user");
+
+    if (!storedUser) {
+      window.location.href = "/login";
+      return;
+    }
+
+    try {
+      const user = JSON.parse(storedUser);
+
+      if (!user || !user.role) {
+        localStorage.removeItem("erp_user");
+        window.location.href = "/login";
+        return;
+      }
+
+      setUserName(user.name || user.full_name || "Admin");
+      setUserRole(user.role || "");
+
+      // Strict admin-only access
+      if (user.role !== "admin") {
+        window.location.href = getDefaultRouteByRole(user.role);
+        return;
+      }
+
+      setIsCheckingAuth(false);
+    } catch (error) {
+      console.log("ADMIN ACCESS ERROR:", error);
+      localStorage.removeItem("erp_user");
+      window.location.href = "/login";
+    }
   }, []);
 
   useEffect(() => {
@@ -98,7 +122,6 @@ export default function AdminDashboard() {
     },
   ];
 
-  // ⏳ Loading screen during auth check
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">

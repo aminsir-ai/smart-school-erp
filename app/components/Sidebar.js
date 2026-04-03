@@ -75,6 +75,15 @@ export default function Sidebar({ role = "student" }) {
 
   const adminMenu = [
     { label: "Dashboard", path: "/admin-dashboard" },
+
+    { label: "Admin Attendance", path: "/admin-teacher-attendance" },
+    { label: "Admin Fees", path: "/admin-fees" },
+    { label: "Admin Expenditure", path: "/admin-expenditure" },
+    { label: "Admin Outstanding", path: "/admin-outstanding-fees" },
+
+    { label: "Management Dashboard", path: "/management" },
+    { label: "Monthly Summary", path: "/management-monthly" },
+
     { label: "Add User", path: "/add-user" },
     { label: "Profile", path: "/admin-profile" },
   ];

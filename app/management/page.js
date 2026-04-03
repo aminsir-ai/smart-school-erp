@@ -256,6 +256,19 @@ export default function ManagementPage() {
     ).length;
   }, [outstandingFees]);
 
+  const overdueStudentsCount = useMemo(() => {
+    return outstandingFees.filter((item) => item.status === "Overdue").length;
+  }, [outstandingFees]);
+
+  const partialStudentsCount = useMemo(() => {
+    return outstandingFees.filter((item) => item.status === "Partial").length;
+  }, [outstandingFees]);
+
+  const absentPercentage = useMemo(() => {
+    if (!totalTeachersMarked) return 0;
+    return Math.round((absentTodayCount / totalTeachersMarked) * 100);
+  }, [absentTodayCount, totalTeachersMarked]);
+
   const canViewFinance = userRole === "admin" || userRole === "management";
 
   const dashboardTitle =
@@ -280,6 +293,160 @@ export default function ManagementPage() {
         { title: "Present Today", value: String(presentTodayCount) },
         { title: "Absent Today", value: String(absentTodayCount) },
       ];
+
+  const smartAlerts = useMemo(() => {
+    const alerts = [];
+
+    if (!isLoadingAttendance && totalTeachersMarked === 0) {
+      alerts.push({
+        id: "attendance-not-marked",
+        title: "Attendance not marked",
+        message: `No teacher attendance has been marked for ${selectedDate}.`,
+        severity: "high",
+      });
+    }
+
+    if (!isLoadingAttendance && totalTeachersMarked > 0 && absentTodayCount > 0) {
+      alerts.push({
+        id: "absent-teachers",
+        title: "Absent teachers today",
+        message: `${absentTodayCount} teacher(s) are marked as absent, leave, or half day today.`,
+        severity: absentPercentage >= 50 ? "high" : "medium",
+      });
+    }
+
+    if (!isLoadingAttendance && totalTeachersMarked > 0 && absentPercentage >= 50) {
+      alerts.push({
+        id: "low-attendance",
+        title: "Low teacher attendance",
+        message: `Teacher absence level is ${absentPercentage}% today, which needs attention.`,
+        severity: "high",
+      });
+    }
+
+    if (canViewFinance) {
+      if (!isLoadingFees && totalFeesCollected === 0) {
+        alerts.push({
+          id: "no-fee-collection",
+          title: "No fee collection today",
+          message: `No fee payment has been recorded for ${selectedDate}.`,
+          severity: "medium",
+        });
+      }
+
+      if (!isLoadingExpenses && totalExpenditure > totalFeesCollected) {
+        alerts.push({
+          id: "expense-higher-than-fees",
+          title: "Expense is higher than collection",
+          message: `Today's expenditure is ${formatCurrency(
+            totalExpenditure
+          )}, which is more than today's fees collection of ${formatCurrency(
+            totalFeesCollected
+          )}.`,
+          severity: "high",
+        });
+      }
+
+      if (!isLoadingOutstanding && pendingStudentsCount > 0) {
+        alerts.push({
+          id: "pending-outstanding",
+          title: "Pending fee dues",
+          message: `${pendingStudentsCount} student(s) still have outstanding fees totaling ${formatCurrency(
+            totalOutstanding
+          )}.`,
+          severity: totalOutstanding >= 10000 ? "high" : "medium",
+        });
+      }
+
+      if (!isLoadingOutstanding && overdueStudentsCount > 0) {
+        alerts.push({
+          id: "overdue-fees",
+          title: "Overdue fee accounts",
+          message: `${overdueStudentsCount} student account(s) are marked overdue.`,
+          severity: "high",
+        });
+      }
+
+      if (!isLoadingOutstanding && partialStudentsCount > 0) {
+        alerts.push({
+          id: "partial-fees",
+          title: "Partial fee payments",
+          message: `${partialStudentsCount} student account(s) are marked as partial payment.`,
+          severity: "normal",
+        });
+      }
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        id: "all-good",
+        title: "All clear",
+        message: "No important alerts for the selected date.",
+        severity: "success",
+      });
+    }
+
+    return alerts;
+  }, [
+    canViewFinance,
+    selectedDate,
+    totalTeachersMarked,
+    absentTodayCount,
+    absentPercentage,
+    totalFeesCollected,
+    totalExpenditure,
+    pendingStudentsCount,
+    totalOutstanding,
+    overdueStudentsCount,
+    partialStudentsCount,
+    isLoadingAttendance,
+    isLoadingFees,
+    isLoadingExpenses,
+    isLoadingOutstanding,
+  ]);
+
+  function getAlertStyles(severity) {
+    if (severity === "high") {
+      return {
+        card: "border-red-200 bg-red-50",
+        badge: "bg-red-100 text-red-700",
+        title: "text-red-800",
+        text: "text-red-700",
+      };
+    }
+
+    if (severity === "medium") {
+      return {
+        card: "border-yellow-200 bg-yellow-50",
+        badge: "bg-yellow-100 text-yellow-700",
+        title: "text-yellow-800",
+        text: "text-yellow-700",
+      };
+    }
+
+    if (severity === "success") {
+      return {
+        card: "border-green-200 bg-green-50",
+        badge: "bg-green-100 text-green-700",
+        title: "text-green-800",
+        text: "text-green-700",
+      };
+    }
+
+    return {
+      card: "border-blue-200 bg-blue-50",
+      badge: "bg-blue-100 text-blue-700",
+      title: "text-blue-800",
+      text: "text-blue-700",
+    };
+  }
+
+  function getSeverityLabel(severity) {
+    if (severity === "high") return "High";
+    if (severity === "medium") return "Medium";
+    if (severity === "success") return "Good";
+    return "Normal";
+  }
 
   if (isCheckingAuth) {
     return (
@@ -323,6 +490,52 @@ export default function ManagementPage() {
                 </div>
               </div>
             </div>
+
+            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Smart Alerts
+                  </h2>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Important attention points based on attendance and daily records.
+                  </p>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Total Alerts:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {smartAlerts.length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {smartAlerts.map((alert) => {
+                  const styles = getAlertStyles(alert.severity);
+
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`rounded-xl border p-4 ${styles.card}`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <h3 className={`font-semibold ${styles.title}`}>
+                          {alert.title}
+                        </h3>
+                        <span
+                          className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${styles.badge}`}
+                        >
+                          {getSeverityLabel(alert.severity)}
+                        </span>
+                      </div>
+                      <p className={`text-sm leading-6 ${styles.text}`}>
+                        {alert.message}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
               {summaryCards.map((card, index) => (

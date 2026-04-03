@@ -276,8 +276,8 @@ export default function ManagementPage() {
 
   const dashboardSubtitle =
     userRole === "teacher"
-      ? "Welcome, view attendance summary and school status overview."
-      : "View attendance, fee collection, expenditure, and outstanding reports.";
+      ? "View attendance summary and school status overview."
+      : "View attendance, fee collection, expenditure, outstanding reports, and smart status.";
 
   const summaryCards = canViewFinance
     ? [
@@ -405,6 +405,50 @@ export default function ManagementPage() {
     isLoadingOutstanding,
   ]);
 
+  const highAlertsCount = useMemo(() => {
+    return smartAlerts.filter((alert) => alert.severity === "high").length;
+  }, [smartAlerts]);
+
+  const mediumAlertsCount = useMemo(() => {
+    return smartAlerts.filter((alert) => alert.severity === "medium").length;
+  }, [smartAlerts]);
+
+  const normalAlertsCount = useMemo(() => {
+    return smartAlerts.filter(
+      (alert) => alert.severity === "normal" || alert.severity === "success"
+    ).length;
+  }, [smartAlerts]);
+
+  const attendanceRisk = useMemo(() => {
+    if (isLoadingAttendance) return { label: "Loading", tone: "normal" };
+    if (totalTeachersMarked === 0) return { label: "High Risk", tone: "high" };
+    if (absentPercentage >= 50) return { label: "High Risk", tone: "high" };
+    if (absentTodayCount > 0) return { label: "Moderate Risk", tone: "medium" };
+    return { label: "Stable", tone: "success" };
+  }, [isLoadingAttendance, totalTeachersMarked, absentPercentage, absentTodayCount]);
+
+  const financeRisk = useMemo(() => {
+    if (!canViewFinance) return { label: "Restricted", tone: "normal" };
+    if (isLoadingFees || isLoadingExpenses) return { label: "Loading", tone: "normal" };
+    if (totalExpenditure > totalFeesCollected) return { label: "High Risk", tone: "high" };
+    if (totalFeesCollected === 0) return { label: "Watch", tone: "medium" };
+    return { label: "Healthy", tone: "success" };
+  }, [canViewFinance, isLoadingFees, isLoadingExpenses, totalExpenditure, totalFeesCollected]);
+
+  const duesRisk = useMemo(() => {
+    if (!canViewFinance) return { label: "Restricted", tone: "normal" };
+    if (isLoadingOutstanding) return { label: "Loading", tone: "normal" };
+    if (overdueStudentsCount > 0) return { label: "High Risk", tone: "high" };
+    if (pendingStudentsCount > 0) return { label: "Moderate Risk", tone: "medium" };
+    return { label: "Clear", tone: "success" };
+  }, [canViewFinance, isLoadingOutstanding, overdueStudentsCount, pendingStudentsCount]);
+
+  const overallRisk = useMemo(() => {
+    if (highAlertsCount > 0) return { label: "High Risk", tone: "high" };
+    if (mediumAlertsCount > 0) return { label: "Moderate Risk", tone: "medium" };
+    return { label: "Stable", tone: "success" };
+  }, [highAlertsCount, mediumAlertsCount]);
+
   function getAlertStyles(severity) {
     if (severity === "high") {
       return {
@@ -447,6 +491,80 @@ export default function ManagementPage() {
     if (severity === "success") return "Good";
     return "Normal";
   }
+
+  function getRiskCardStyles(tone) {
+    if (tone === "high") {
+      return {
+        box: "bg-red-50 border-red-200",
+        label: "text-red-700",
+        value: "text-red-800",
+      };
+    }
+
+    if (tone === "medium") {
+      return {
+        box: "bg-yellow-50 border-yellow-200",
+        label: "text-yellow-700",
+        value: "text-yellow-800",
+      };
+    }
+
+    if (tone === "success") {
+      return {
+        box: "bg-green-50 border-green-200",
+        label: "text-green-700",
+        value: "text-green-800",
+      };
+    }
+
+    return {
+      box: "bg-blue-50 border-blue-200",
+      label: "text-blue-700",
+      value: "text-blue-800",
+    };
+  }
+
+  const riskCards = canViewFinance
+    ? [
+        {
+          title: "Overall Status",
+          value: overallRisk.label,
+          tone: overallRisk.tone,
+          note: `${highAlertsCount} high, ${mediumAlertsCount} medium alerts`,
+        },
+        {
+          title: "Attendance Risk",
+          value: attendanceRisk.label,
+          tone: attendanceRisk.tone,
+          note: `${absentTodayCount} absent / leave / half day`,
+        },
+        {
+          title: "Finance Risk",
+          value: financeRisk.label,
+          tone: financeRisk.tone,
+          note: `Fees ${formatCurrency(totalFeesCollected)} vs Expense ${formatCurrency(totalExpenditure)}`,
+        },
+        {
+          title: "Dues Risk",
+          value: duesRisk.label,
+          tone: duesRisk.tone,
+          note: `${pendingStudentsCount} pending students`,
+        },
+      ]
+    : [
+        {
+          title: "Overall Status",
+          value: overallRisk.label,
+          tone: overallRisk.tone,
+          note: `${highAlertsCount} high, ${mediumAlertsCount} medium alerts`,
+        },
+        {
+          title: "Attendance Risk",
+          value: attendanceRisk.label,
+          tone: attendanceRisk.tone,
+          note: `${absentTodayCount} absent / leave / half day`,
+        },
+      ];
 
   if (isCheckingAuth) {
     return (
@@ -495,17 +613,74 @@ export default function ManagementPage() {
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-800">
+                    Dashboard Risk Status
+                  </h2>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Quick health signals for today&apos;s operations and alerts.
+                  </p>
+                </div>
+                <div className="text-sm text-gray-600">
+                  High Alerts:{" "}
+                  <span className="font-semibold text-red-700">
+                    {highAlertsCount}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className={`grid gap-4 ${
+                  canViewFinance
+                    ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4"
+                    : "grid-cols-1 sm:grid-cols-2"
+                }`}
+              >
+                {riskCards.map((card, index) => {
+                  const styles = getRiskCardStyles(card.tone);
+
+                  return (
+                    <div
+                      key={index}
+                      className={`rounded-xl border p-4 ${styles.box}`}
+                    >
+                      <p className={`text-sm font-medium mb-2 ${styles.label}`}>
+                        {card.title}
+                      </p>
+                      <h3 className={`text-2xl font-bold ${styles.value}`}>
+                        {card.value}
+                      </h3>
+                      <p className={`text-sm mt-2 ${styles.label}`}>
+                        {card.note}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
                     Smart Alerts
                   </h2>
                   <p className="text-gray-600 text-sm mt-1">
                     Important attention points based on attendance and daily records.
                   </p>
                 </div>
-                <div className="text-sm text-gray-600">
-                  Total Alerts:{" "}
-                  <span className="font-semibold text-gray-800">
-                    {smartAlerts.length}
-                  </span>
+
+                <div className="grid grid-cols-3 gap-3 w-full lg:w-auto">
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                    <p className="text-xs text-red-700 font-medium">High</p>
+                    <p className="text-lg font-bold text-red-800">{highAlertsCount}</p>
+                  </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-center">
+                    <p className="text-xs text-yellow-700 font-medium">Medium</p>
+                    <p className="text-lg font-bold text-yellow-800">{mediumAlertsCount}</p>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center">
+                    <p className="text-xs text-green-700 font-medium">Good / Normal</p>
+                    <p className="text-lg font-bold text-green-800">{normalAlertsCount}</p>
+                  </div>
                 </div>
               </div>
 

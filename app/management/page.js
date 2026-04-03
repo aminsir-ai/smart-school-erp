@@ -333,6 +333,41 @@ export default function ManagementPage() {
     mediumAlertsCount,
   });
 
+  const smartRecommendations = useMemo(() => {
+    const recommendations = [];
+
+    if (absentTodayCount > 0) {
+      recommendations.push(
+        "⚠️ High teacher absence detected. Review attendance immediately."
+      );
+    }
+
+    if (totalFeesCollected > totalExpenditure) {
+      recommendations.push("💰 Fees collection is healthy today.");
+    } else if (totalFeesCollected < totalExpenditure) {
+      recommendations.push(
+        "⚠️ Expenses are higher than fees. Monitor spending."
+      );
+    }
+
+    if (pendingStudentsCount > 0) {
+      recommendations.push(
+        `📉 ${pendingStudentsCount} student(s) have pending dues. Follow-up recommended.`
+      );
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push("✅ Everything looks normal today. Good job!");
+    }
+
+    return recommendations;
+  }, [
+    absentTodayCount,
+    totalFeesCollected,
+    totalExpenditure,
+    pendingStudentsCount,
+  ]);
+
   const riskCards = [
     {
       title: "Overall Status",
@@ -497,6 +532,26 @@ export default function ManagementPage() {
                     </div>
                   );
                 })}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                Smart Recommendations
+              </h2>
+              <p className="text-gray-600 text-sm mb-4">
+                AI-powered suggestions based on today&apos;s data.
+              </p>
+
+              <div className="space-y-2">
+                {smartRecommendations.map((rec, index) => (
+                  <div
+                    key={index}
+                    className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm font-medium"
+                  >
+                    {rec}
+                  </div>
+                ))}
               </div>
             </section>
 

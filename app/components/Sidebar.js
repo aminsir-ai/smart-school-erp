@@ -108,19 +108,58 @@ export default function Sidebar({ role }) {
     { label: "Profile", path: "/parent-dashboard" },
   ];
 
+  const currentPanel = useMemo(() => {
+    if (!pathname) return resolvedRole;
+
+    if (
+      pathname === "/admin-dashboard" ||
+      pathname === "/add-user" ||
+      pathname === "/admin-profile" ||
+      pathname.startsWith("/admin-")
+    ) {
+      return "admin";
+    }
+
+    if (pathname === "/management" || pathname.startsWith("/management")) {
+      return "management";
+    }
+
+    if (pathname.startsWith("/teacher")) {
+      return "teacher";
+    }
+
+    if (pathname.startsWith("/student")) {
+      return "student";
+    }
+
+    if (pathname.startsWith("/parent")) {
+      return "parent";
+    }
+
+    return resolvedRole;
+  }, [pathname, resolvedRole]);
+
   const menu = useMemo(() => {
-    if (resolvedRole === "teacher") return teacherMenu;
-    if (resolvedRole === "admin") return adminMenu;
-    if (resolvedRole === "management") return managementMenu;
-    if (resolvedRole === "parent") return parentMenu;
+    if (currentPanel === "teacher") return teacherMenu;
+    if (currentPanel === "admin") return adminMenu;
+    if (currentPanel === "management") return managementMenu;
+    if (currentPanel === "parent") return parentMenu;
     return studentMenu;
-  }, [resolvedRole]);
+  }, [currentPanel]);
+
+  const panelTitle = useMemo(() => {
+    if (currentPanel === "teacher") return "teacher panel";
+    if (currentPanel === "admin") return "admin panel";
+    if (currentPanel === "management") return "management panel";
+    if (currentPanel === "parent") return "parent panel";
+    return "student panel";
+  }, [currentPanel]);
 
   return (
     <div className="w-64 min-h-screen bg-gray-900 p-4 text-white">
       <h2 className="mb-2 text-xl font-bold">Menu</h2>
       <p className="mb-6 text-xs uppercase tracking-wide text-gray-400">
-        {resolvedRole} panel
+        {panelTitle}
       </p>
 
       <ul className="space-y-3">

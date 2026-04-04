@@ -26,6 +26,49 @@ function getTodayDate() {
   return `${year}-${month}-${day}`;
 }
 
+function getWatchlistStyles(priority) {
+  if (priority === "high") {
+    return {
+      card: "bg-red-50 border-red-200",
+      badge: "bg-red-100 text-red-700",
+      title: "text-red-800",
+      text: "text-red-700",
+    };
+  }
+
+  if (priority === "medium") {
+    return {
+      card: "bg-yellow-50 border-yellow-200",
+      badge: "bg-yellow-100 text-yellow-700",
+      title: "text-yellow-800",
+      text: "text-yellow-700",
+    };
+  }
+
+  if (priority === "watch") {
+    return {
+      card: "bg-blue-50 border-blue-200",
+      badge: "bg-blue-100 text-blue-700",
+      title: "text-blue-800",
+      text: "text-blue-700",
+    };
+  }
+
+  return {
+    card: "bg-green-50 border-green-200",
+    badge: "bg-green-100 text-green-700",
+    title: "text-green-800",
+    text: "text-green-700",
+  };
+}
+
+function getWatchlistLabel(priority) {
+  if (priority === "high") return "High";
+  if (priority === "medium") return "Medium";
+  if (priority === "watch") return "Watch";
+  return "Clear";
+}
+
 export default function ManagementPage() {
   const [userName, setUserName] = useState("Management");
   const [userRole, setUserRole] = useState("");
@@ -356,6 +399,15 @@ export default function ManagementPage() {
       );
     }
 
+    if (
+      totalTeachersMarked === 0 &&
+      totalFeesCollected === 0 &&
+      totalExpenditure === 0 &&
+      pendingStudentsCount === 0
+    ) {
+      recommendations.push("ℹ️ Very limited activity is recorded for today.");
+    }
+
     if (recommendations.length === 0) {
       recommendations.push("✅ Everything looks normal today. Good job!");
     }
@@ -366,44 +418,75 @@ export default function ManagementPage() {
     totalFeesCollected,
     totalExpenditure,
     pendingStudentsCount,
+    totalTeachersMarked,
   ]);
 
   const tomorrowWatchlist = useMemo(() => {
     const watchlist = [];
 
     if (absentTodayCount > 0) {
-      watchlist.push("Attendance follow-up should continue tomorrow morning.");
+      watchlist.push({
+        title: "Attendance follow-up",
+        message: "Teacher attendance needs early review tomorrow morning.",
+        priority: absentPercentage >= 50 ? "high" : "medium",
+      });
     }
 
     if (pendingStudentsCount > 0) {
-      watchlist.push(
-        `Fee recovery follow-up is needed for ${pendingStudentsCount} pending student(s).`
-      );
+      watchlist.push({
+        title: "Fee recovery follow-up",
+        message: `Fee recovery follow-up is needed for ${pendingStudentsCount} pending student(s).`,
+        priority: totalOutstanding >= 10000 ? "high" : "medium",
+      });
     }
 
     if (overdueStudentsCount > 0) {
-      watchlist.push(
-        `${overdueStudentsCount} overdue account(s) may need priority follow-up tomorrow.`
-      );
+      watchlist.push({
+        title: "Overdue accounts",
+        message: `${overdueStudentsCount} overdue account(s) may need priority follow-up tomorrow.`,
+        priority: "high",
+      });
     }
 
     if (totalExpenditure > totalFeesCollected) {
-      watchlist.push(
-        "Tomorrow expense planning should be reviewed before approving new spending."
-      );
+      watchlist.push({
+        title: "Expense planning review",
+        message: "Tomorrow expense planning should be checked before approving new spending.",
+        priority: "watch",
+      });
+    }
+
+    if (
+      totalTeachersMarked === 0 &&
+      totalFeesCollected === 0 &&
+      totalExpenditure === 0 &&
+      pendingStudentsCount > 0
+    ) {
+      watchlist.push({
+        title: "Low activity day",
+        message: "Records were quiet today, but pending fee follow-up should continue tomorrow.",
+        priority: "watch",
+      });
     }
 
     if (watchlist.length === 0) {
-      watchlist.push("No major carry-forward risk detected for tomorrow.");
+      watchlist.push({
+        title: "Stable outlook",
+        message: "No major carry-forward risk detected for tomorrow.",
+        priority: "clear",
+      });
     }
 
     return watchlist;
   }, [
     absentTodayCount,
+    absentPercentage,
     pendingStudentsCount,
     overdueStudentsCount,
     totalExpenditure,
     totalFeesCollected,
+    totalOutstanding,
+    totalTeachersMarked,
   ]);
 
   const riskCards = [
@@ -594,22 +677,42 @@ export default function ManagementPage() {
             </section>
 
             <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-3">
-                Tomorrow Watchlist
-              </h2>
-              <p className="text-gray-600 text-sm mb-4">
-                Predictive follow-up points based on today&apos;s school data.
-              </p>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Tomorrow Watchlist
+                  </h2>
+                  <p className="text-gray-600 text-sm mt-1">
+                    Predictive follow-up points based on today&apos;s school data.
+                  </p>
+                </div>
+              </div>
 
-              <div className="space-y-2">
-                {tomorrowWatchlist.map((item, index) => (
-                  <div
-                    key={index}
-                    className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm font-medium"
-                  >
-                    {item}
-                  </div>
-                ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {tomorrowWatchlist.map((item, index) => {
+                  const styles = getWatchlistStyles(item.priority);
+
+                  return (
+                    <div
+                      key={index}
+                      className={`rounded-xl border p-4 ${styles.card}`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <h3 className={`font-semibold ${styles.title}`}>
+                          {item.title}
+                        </h3>
+                        <span
+                          className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${styles.badge}`}
+                        >
+                          {getWatchlistLabel(item.priority)}
+                        </span>
+                      </div>
+                      <p className={`text-sm leading-6 ${styles.text}`}>
+                        {item.message}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </section>
 

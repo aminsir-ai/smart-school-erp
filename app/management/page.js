@@ -368,6 +368,44 @@ export default function ManagementPage() {
     pendingStudentsCount,
   ]);
 
+  const tomorrowWatchlist = useMemo(() => {
+    const watchlist = [];
+
+    if (absentTodayCount > 0) {
+      watchlist.push("Attendance follow-up should continue tomorrow morning.");
+    }
+
+    if (pendingStudentsCount > 0) {
+      watchlist.push(
+        `Fee recovery follow-up is needed for ${pendingStudentsCount} pending student(s).`
+      );
+    }
+
+    if (overdueStudentsCount > 0) {
+      watchlist.push(
+        `${overdueStudentsCount} overdue account(s) may need priority follow-up tomorrow.`
+      );
+    }
+
+    if (totalExpenditure > totalFeesCollected) {
+      watchlist.push(
+        "Tomorrow expense planning should be reviewed before approving new spending."
+      );
+    }
+
+    if (watchlist.length === 0) {
+      watchlist.push("No major carry-forward risk detected for tomorrow.");
+    }
+
+    return watchlist;
+  }, [
+    absentTodayCount,
+    pendingStudentsCount,
+    overdueStudentsCount,
+    totalExpenditure,
+    totalFeesCollected,
+  ]);
+
   const riskCards = [
     {
       title: "Overall Status",
@@ -550,6 +588,26 @@ export default function ManagementPage() {
                     className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm font-medium"
                   >
                     {rec}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                Tomorrow Watchlist
+              </h2>
+              <p className="text-gray-600 text-sm mb-4">
+                Predictive follow-up points based on today&apos;s school data.
+              </p>
+
+              <div className="space-y-2">
+                {tomorrowWatchlist.map((item, index) => (
+                  <div
+                    key={index}
+                    className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm font-medium"
+                  >
+                    {item}
                   </div>
                 ))}
               </div>

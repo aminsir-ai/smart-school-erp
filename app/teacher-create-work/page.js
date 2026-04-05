@@ -54,6 +54,10 @@ export default function TeacherCreateWorkPage() {
   const [questionCount, setQuestionCount] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
 
+  const [generatedPaper, setGeneratedPaper] = useState("");
+  const [generatedAnswerKey, setGeneratedAnswerKey] = useState("");
+  const [generating, setGenerating] = useState(false);
+
   const [keywords, setKeywords] = useState("");
   const [dueDate, setDueDate] = useState("");
 
@@ -160,6 +164,8 @@ export default function TeacherCreateWorkPage() {
     setTotalMarks("");
     setQuestionCount("");
     setDifficulty("medium");
+    setGeneratedPaper("");
+    setGeneratedAnswerKey("");
   }
 
   function handleLessonFilesChange(e) {
@@ -190,6 +196,60 @@ export default function TeacherCreateWorkPage() {
     setLessonFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
   }
 
+  async function handleGenerateTestPaper() {
+    if (type !== "test_paper") {
+      setMessage("Generation is available only for test paper.");
+      return;
+    }
+
+    if (lessonFiles.length === 0) {
+      setMessage("Please upload lesson files first.");
+      return;
+    }
+
+    if (!totalMarks || !questionCount) {
+      setMessage("Please fill total marks and number of questions first.");
+      return;
+    }
+
+    setGenerating(true);
+    setMessage("");
+
+    try {
+      const lessonTexts = lessonFiles.map((file) => file.name);
+
+      const response = await fetch("/api/generate-test-paper", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          paperMode,
+          totalMarks,
+          questionCount,
+          difficulty,
+          lessonTexts,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data?.error || "Failed to generate test paper.");
+        return;
+      }
+
+      setGeneratedPaper(data?.paper || "");
+      setGeneratedAnswerKey(data?.answerKey || "");
+      setMessage("✅ Test paper generated. Review before saving.");
+    } catch (error) {
+      console.log("GENERATE TEST PAPER ERROR:", error);
+      setMessage("Failed to generate test paper.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function handleCreateWork() {
     if (!title.trim() || !subjectName.trim()) {
       setMessage("Please fill all required fields.");
@@ -201,8 +261,14 @@ export default function TeacherCreateWorkPage() {
       return;
     }
 
-    if (type === "test_paper" && lessonFiles.length === 0 && !question.trim() && !questionFile) {
-      setMessage("Please upload at least one lesson file or add test paper instructions.");
+    if (
+      type === "test_paper" &&
+      lessonFiles.length === 0 &&
+      !question.trim() &&
+      !questionFile &&
+      !generatedPaper.trim()
+    ) {
+      setMessage("Please upload lesson files or generate/add test paper content.");
       return;
     }
 
@@ -222,13 +288,23 @@ export default function TeacherCreateWorkPage() {
         lessonNames.push(uploaded.name);
       }
 
+      const finalQuestion =
+        type === "test_paper" && generatedPaper.trim()
+          ? generatedPaper.trim()
+          : question.trim();
+
+      const finalModelAnswer =
+        type === "test_paper" && generatedAnswerKey.trim()
+          ? generatedAnswerKey.trim()
+          : modelAnswer.trim();
+
       const payload = {
         class_name: className,
         subject_name: subjectName,
         type,
         title: title.trim(),
-        question: question.trim(),
-        model_answer: modelAnswer.trim(),
+        question: finalQuestion,
+        model_answer: finalModelAnswer,
         keywords: keywords.trim(),
         due_date: dueDate || null,
         teacher_name: teacherName,
@@ -246,6 +322,12 @@ export default function TeacherCreateWorkPage() {
         total_marks: type === "test_paper" ? totalMarks || null : null,
         question_count: type === "test_paper" ? questionCount || null : null,
         difficulty_level: type === "test_paper" ? difficulty : null,
+
+        ai_generated: type === "test_paper" ? Boolean(generatedPaper.trim()) : false,
+        generated_paper_text:
+          type === "test_paper" ? generatedPaper.trim() || null : null,
+        generated_answer_key:
+          type === "test_paper" ? generatedAnswerKey.trim() || null : null,
       };
 
       const { error } = await supabase.from("works").insert([payload]);
@@ -421,6 +503,39 @@ export default function TeacherCreateWorkPage() {
                     onChange={(e) => setQuestionCount(e.target.value)}
                   />
                 </div>
+
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={handleGenerateTestPaper}
+                    disabled={generating}
+                    className="w-full rounded-xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:opacity-70"
+                  >
+                    {generating ? "Generating..." : "Generate Test Paper"}
+                  </button>
+                </div>
+
+                {generatedPaper ? (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+                    <h3 className="mb-2 font-semibold text-gray-800">
+                      Generated Question Paper
+                    </h3>
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                      {generatedPaper}
+                    </pre>
+                  </div>
+                ) : null}
+
+                {generatedAnswerKey ? (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+                    <h3 className="mb-2 font-semibold text-gray-800">
+                      Generated Answer Key
+                    </h3>
+                    <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                      {generatedAnswerKey}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

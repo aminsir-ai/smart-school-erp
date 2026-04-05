@@ -215,28 +215,33 @@ export default function TeacherCreateWorkPage() {
     setGenerating(true);
 
     try {
-      const formData = new FormData();
+      // 1) Upload lesson files first to avoid large API payloads
+      const uploadedLessonFiles = await uploadMultipleLessonFiles(lessonFiles);
+      const lessonFileUrls = uploadedLessonFiles.map((file) => file.url).filter(Boolean);
 
-      lessonFiles.forEach((file) => {
-        formData.append("lesson_files", file);
-      });
+      if (lessonFileUrls.length === 0) {
+        throw new Error("Lesson files uploaded, but URLs were not created.");
+      }
 
-      formData.append("test_paper_pattern", testPaperPattern || "");
-      formData.append("instructions", testPaperPattern || "");
-      formData.append("pattern", testPaperPattern || "");
-
-      formData.append("class_name", selectedClass);
-      formData.append("subject", subject);
-      formData.append("title", title || "");
-      formData.append("difficulty", difficulty);
-      formData.append("paper_mode", paperMode);
-      formData.append("total_marks", String(totalMarks));
-      formData.append("question_count", String(questionCount));
-      formData.append("keywords", keywords || "");
-
+      // 2) Send only JSON to API
       const response = await fetch("/api/generate-test-paper", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          paperMode,
+          totalMarks: safeNumber(totalMarks, 20),
+          questionCount: safeNumber(questionCount, 10),
+          difficulty,
+          className: selectedClass,
+          subject,
+          title,
+          keywords,
+          testPaperPattern,
+          lessonFileUrls,
+          lessonTexts: [],
+        }),
       });
 
       const rawText = await response.text();
@@ -330,7 +335,7 @@ export default function TeacherCreateWorkPage() {
       const insertPayload = {
         title: title.trim(),
         class_name: selectedClass,
-        subject: subject,
+        subject,
         type: workType,
         question: finalQuestionText,
         question_text: finalQuestionText,
@@ -352,7 +357,6 @@ export default function TeacherCreateWorkPage() {
         generated_paper: workType === "test_paper" ? generatedPaper || "" : "",
         generated_answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
         answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
-
         lesson_files: uploadedLessonFiles,
         created_at: new Date().toISOString(),
       };
@@ -660,7 +664,7 @@ Answer in detail (Any 2) from given 3 questions. 8 marks`}
                           className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
                         />
                         <p className="mt-2 text-xs text-gray-500">
-                          This typed pattern will now be sent together with uploaded lesson files
+                          This typed pattern will be used together with uploaded lesson files
                           while generating the test paper.
                         </p>
                       </div>

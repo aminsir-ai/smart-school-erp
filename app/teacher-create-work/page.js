@@ -84,6 +84,7 @@ export default function TeacherCreateWorkPage() {
   const [testPaperPattern, setTestPaperPattern] = useState("");
 
   const [lessonFiles, setLessonFiles] = useState([]);
+  const [uploadedLessonFiles, setUploadedLessonFiles] = useState([]);
   const [questionFile, setQuestionFile] = useState(null);
   const [modelAnswerFile, setModelAnswerFile] = useState(null);
 
@@ -215,15 +216,15 @@ export default function TeacherCreateWorkPage() {
     setGenerating(true);
 
     try {
-      // 1) Upload lesson files first to avoid large API payloads
-      const uploadedLessonFiles = await uploadMultipleLessonFiles(lessonFiles);
-      const lessonFileUrls = uploadedLessonFiles.map((file) => file.url).filter(Boolean);
+      const uploaded = await uploadMultipleLessonFiles(lessonFiles);
+      const lessonFileUrls = uploaded.map((file) => file.url).filter(Boolean);
 
       if (lessonFileUrls.length === 0) {
         throw new Error("Lesson files uploaded, but URLs were not created.");
       }
 
-      // 2) Send only JSON to API
+      setUploadedLessonFiles(uploaded);
+
       const response = await fetch("/api/generate-test-paper", {
         method: "POST",
         headers: {
@@ -320,9 +321,7 @@ export default function TeacherCreateWorkPage() {
         ? await uploadFileToBucket(modelAnswerFile, ANSWER_BUCKET, "model-answer-files")
         : { url: "", path: "", name: "" };
 
-      const uploadedLessonFiles = lessonFiles.length
-        ? await uploadMultipleLessonFiles(lessonFiles)
-        : [];
+      const lessonFilesToSave = uploadedLessonFiles || [];
 
       const finalQuestionText =
         workType === "test_paper"
@@ -357,7 +356,7 @@ export default function TeacherCreateWorkPage() {
         generated_paper: workType === "test_paper" ? generatedPaper || "" : "",
         generated_answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
         answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
-        lesson_files: uploadedLessonFiles,
+        lesson_files: lessonFilesToSave,
         created_at: new Date().toISOString(),
       };
 
@@ -379,6 +378,7 @@ export default function TeacherCreateWorkPage() {
       setQuestionFile(null);
       setModelAnswerFile(null);
       setLessonFiles([]);
+      setUploadedLessonFiles([]);
       setGeneratedPaper("");
       setGeneratedAnswerKey("");
       setTestPaperPattern("");
@@ -408,6 +408,7 @@ export default function TeacherCreateWorkPage() {
     setQuestionFile(null);
     setModelAnswerFile(null);
     setLessonFiles([]);
+    setUploadedLessonFiles([]);
     setMessage("");
     setError("");
 

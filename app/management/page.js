@@ -513,7 +513,10 @@ export default function ManagementPage() {
       text.includes("pending students") ||
       text.includes("overdue") ||
       text.includes("dues") ||
-      text.includes("due");
+      text.includes("due") ||
+      text.includes("partial payment") ||
+      text.includes("partial payments") ||
+      text.includes("partial");
 
     const hasExpense =
       text.includes("expense") ||
@@ -580,7 +583,10 @@ export default function ManagementPage() {
       text.includes("overdue") ||
       text.includes("pending") ||
       text.includes("dues") ||
-      text.includes("due");
+      text.includes("due") ||
+      text.includes("partial payment") ||
+      text.includes("partial payments") ||
+      text.includes("partial");
 
     const hasExpense =
       text.includes("expense") ||

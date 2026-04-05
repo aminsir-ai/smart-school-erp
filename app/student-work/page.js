@@ -73,6 +73,7 @@ export default function StudentWorkPage() {
   const [studentName, setStudentName] = useState("Student");
   const [studentClass, setStudentClass] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [userLoaded, setUserLoaded] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
 
   const [works, setWorks] = useState([]);
@@ -110,10 +111,11 @@ export default function StudentWorkPage() {
     setStudentClass(user.class || user.class_name || "");
     setStudentId(String(user.id || user.student_id || user.name || ""));
     setIsAllowed(true);
+    setUserLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!userLoaded || !isAllowed) return;
 
     async function loadData() {
       setLoading(true);
@@ -212,7 +214,7 @@ export default function StudentWorkPage() {
     }
 
     loadData();
-  }, [isAllowed]);
+  }, [userLoaded, isAllowed]);
 
   const filteredWorks = useMemo(() => {
     return works.filter((work) => {
@@ -254,6 +256,7 @@ export default function StudentWorkPage() {
     return result;
   }, [works, submissionMap]);
 
+  if (!userLoaded) return null;
   if (!isAllowed) return null;
 
   return (

@@ -1,32 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
-import { supabase } from "@/lib/supabase";
-
-const WORK_TYPE_TABS = ["All", "Homework", "Class Work"];
-const STATUS_TABS = ["All", "Pending", "Submitted", "Checked"];
-
-function normalizeWorkType(value) {
-  const text = String(value || "").trim().toLowerCase();
-
-  if (text === "homework" || text === "home work") return "Homework";
-  if (text === "classwork" || text === "class work") return "Class Work";
-
-  return "Homework";
-}
-
-function normalizeSubmissionStatus(value, isSubmitted) {
-  const text = String(value || "").trim().toLowerCase();
-
-  if (!isSubmitted) return "Pending";
-  if (text === "checked") return "Checked";
-  if (text === "submitted") return "Submitted";
-  if (text === "pending") return "Pending";
-
-  return "Submitted";
-}
 
 function formatDate(value) {
   if (!value) return "-";
@@ -42,36 +19,50 @@ function formatDate(value) {
   }
 }
 
-function getClassLabel(work) {
-  return (
-    work?.class_name ||
-    work?.class ||
-    work?.student_class ||
-    work?.class_label ||
-    "-"
-  );
+function formatType(type) {
+  const text = String(type || "").trim().toLowerCase();
+
+  if (text === "homework" || text === "home work") return "Homework";
+  if (text === "classwork" || text === "class work") return "Class Work";
+  if (text === "quiz") return "Quiz";
+  if (text === "test_paper" || text === "test paper") return "Test Paper";
+
+  return type || "-";
 }
 
 function getSubjectLabel(work) {
   return work?.subject || work?.subject_name || "-";
 }
 
-function getDescriptionLabel(work) {
-  return work?.question || work?.description || work?.instructions || "";
+function getQuestionPaperText(work) {
+  return (
+    work?.generated_paper ||
+    work?.question_text ||
+    work?.question ||
+    work?.description ||
+    work?.instructions ||
+    "No content"
+  );
 }
 
-export default function StudentWorkPage() {
-  const [studentName, setStudentName] = useState("Student");
-  const [studentClass, setStudentClass] = useState("");
-  const [studentId, setStudentId] = useState("");
+function getAnswerKeyText(work) {
+  return (
+    work?.generated_answer_key ||
+    work?.answer_key ||
+    work?.model_answer ||
+    ""
+  );
+}
+
+export default function TeacherWorkListPage() {
+  const [teacherName, setTeacherName] = useState("Teacher");
+  const [teacherId, setTeacherId] = useState("");
+  const [userLoaded, setUserLoaded] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
 
   const [works, setWorks] = useState([]);
-  const [submissionMap, setSubmissionMap] = useState({});
+  const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const [workTypeFilter, setWorkTypeFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -92,381 +83,247 @@ export default function StudentWorkPage() {
       return;
     }
 
-    if (!user || user.role !== "student") {
+    if (!user || user.role !== "teacher") {
       window.location.href = "/login";
       return;
     }
 
-    setStudentName(user.name || "Student");
-    setStudentClass(user.class || user.class_name || "");
-    setStudentId(String(user.id || user.student_id || user.name || ""));
+    setTeacherName(user.name || "Teacher");
+    setTeacherId(String(user.id || user.teacher_id || user.email || ""));
     setIsAllowed(true);
+    setUserLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!userLoaded || !isAllowed) return;
+    fetchWorks();
+  }, [userLoaded, isAllowed, teacherId]);
 
-    async function loadData() {
-      setLoading(true);
+  async function fetchWorks() {
+    setLoading(true);
 
-      try {
-        const storedUser = localStorage.getItem("erp_user");
-        const user = storedUser ? JSON.parse(storedUser) : null;
+    try {
+      let query = supabase
+        .from("works")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-        const currentStudentId = String(
-          user?.id || user?.student_id || user?.name || ""
-        );
+      // filter only if teacherId exists
+      if (teacherId) {
+        query = query.eq("teacher_id", teacherId);
+      }
 
-        const currentStudentClass = String(
-          user?.class || user?.class_name || ""
-        ).trim();
+      let { data, error } = await query;
 
-        const { data: workData, error: workError } = await supabase
+      // fallback: if no rows found by teacher_id, try teacher_name
+      if ((!data || data.length === 0) && teacherName) {
+        const fallback = await supabase
           .from("works")
           .select("*")
+          .eq("teacher_name", teacherName)
           .order("created_at", { ascending: false });
 
-        if (workError) {
-          console.log("WORK FETCH ERROR:", workError);
-          setWorks([]);
-        } else {
-          let filteredWorks = Array.isArray(workData) ? workData : [];
-
-          if (currentStudentClass) {
-            const studentClassLower = currentStudentClass.toLowerCase();
-
-            filteredWorks = filteredWorks.filter((work) => {
-              const workClass = String(
-                work?.class ||
-                  work?.class_name ||
-                  work?.student_class ||
-                  work?.class_label ||
-                  ""
-              )
-                .trim()
-                .toLowerCase();
-
-              return (
-                workClass === studentClassLower ||
-                workClass.includes(studentClassLower) ||
-                studentClassLower.includes(workClass)
-              );
-            });
-          }
-
-          setWorks(filteredWorks);
-        }
-
-        if (currentStudentId) {
-          const { data: submissionData, error: submissionError } = await supabase
-            .from("submissions")
-            .select("*")
-            .or(
-              `student_id.eq.${currentStudentId},student_name.eq.${user?.name || ""}`
-            );
-
-          if (submissionError) {
-            console.log("SUBMISSION FETCH ERROR:", submissionError);
-            setSubmissionMap({});
-          } else {
-            const map = {};
-
-            (submissionData || []).forEach((item) => {
-              const workId = item?.work_id;
-              if (!workId) return;
-
-              const isSubmitted =
-                !!item?.answer_text ||
-                !!item?.file_url ||
-                !!item?.submitted_at ||
-                String(item?.status || "").trim().length > 0;
-
-              map[workId] = {
-                ...item,
-                isSubmitted,
-                status: normalizeSubmissionStatus(item?.status, isSubmitted),
-              };
-            });
-
-            setSubmissionMap(map);
-          }
-        } else {
-          setSubmissionMap({});
-        }
-      } catch (error) {
-        console.log("LOAD DATA ERROR:", error);
-        setWorks([]);
-        setSubmissionMap({});
-      } finally {
-        setLoading(false);
+        data = fallback.data;
+        error = fallback.error;
       }
+
+      if (error) {
+        console.log("FETCH WORKS ERROR:", error);
+        setWorks([]);
+      } else {
+        setWorks(data || []);
+      }
+    } catch (error) {
+      console.log("FETCH WORKS CATCH ERROR:", error);
+      setWorks([]);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    loadData();
-  }, [isAllowed]);
+  function toggleExpand(id) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
 
-  const filteredWorks = useMemo(() => {
-    return works.filter((work) => {
-      const workType = normalizeWorkType(work?.type || work?.work_type);
-      const submission = submissionMap[work.id];
-      const derivedStatus = submission
-        ? normalizeSubmissionStatus(submission?.status, submission?.isSubmitted)
-        : "Pending";
+  async function handleDeleteWork(workId) {
+    const ok = window.confirm("Are you sure you want to delete this work?");
+    if (!ok) return;
 
-      const workTypeMatch =
-        workTypeFilter === "All" ? true : workType === workTypeFilter;
+    try {
+      const { error } = await supabase.from("works").delete().eq("id", workId);
 
-      const statusMatch =
-        statusFilter === "All" ? true : derivedStatus === statusFilter;
+      if (error) {
+        alert(error.message || "Failed to delete work.");
+        return;
+      }
 
-      return workTypeMatch && statusMatch;
-    });
-  }, [works, submissionMap, workTypeFilter, statusFilter]);
+      setWorks((prev) => prev.filter((item) => item.id !== workId));
 
-  const counts = useMemo(() => {
-    const result = {
-      total: works.length,
-      pending: 0,
-      submitted: 0,
-      checked: 0,
-    };
+      if (expandedId === workId) {
+        setExpandedId(null);
+      }
+    } catch (error) {
+      console.log("DELETE WORK ERROR:", error);
+      alert("Failed to delete work.");
+    }
+  }
 
-    works.forEach((work) => {
-      const submission = submissionMap[work.id];
-      const status = submission
-        ? normalizeSubmissionStatus(submission?.status, submission?.isSubmitted)
-        : "Pending";
-
-      if (status === "Pending") result.pending += 1;
-      if (status === "Submitted") result.submitted += 1;
-      if (status === "Checked") result.checked += 1;
-    });
-
-    return result;
-  }, [works, submissionMap]);
-
+  if (!userLoaded) return null;
   if (!isAllowed) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header name={studentName} />
-      <div className="flex">
-        <Sidebar role="student" />
+    <>
+      <Header name={teacherName} />
 
-        <main className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-5 rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-800">
-                    Student Work
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Welcome, {studentName}
-                    {studentClass ? ` | Class: ${studentClass}` : ""}
-                  </p>
-                </div>
+      <div className="flex min-h-screen bg-gray-100">
+        <Sidebar role="teacher" />
 
-                <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
-                  <div className="rounded-xl bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
-                    Total: {counts.total}
-                  </div>
-                  <div className="rounded-xl bg-yellow-50 px-4 py-2 text-sm font-semibold text-yellow-700">
-                    Pending: {counts.pending}
-                  </div>
-                  <div className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">
-                    Submitted: {counts.submitted}
-                  </div>
-                  <div className="rounded-xl bg-green-50 px-4 py-2 text-sm font-semibold text-green-700">
-                    Checked: {counts.checked}
-                  </div>
-                </div>
-              </div>
+        <div className="flex-1 p-4 md:p-6">
+          <div className="mx-auto max-w-6xl space-y-6">
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <h1 className="text-3xl font-bold text-gray-800">
+                Teacher - All Works
+              </h1>
+              <p className="mt-2 text-gray-600">
+                View all created homework, classwork, quiz, and test papers.
+              </p>
             </div>
 
-            <div className="mb-5 rounded-2xl bg-white p-4 shadow-sm">
-              <div className="mb-3">
-                <p className="mb-2 text-sm font-semibold text-gray-700">
-                  Filter by work type
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {WORK_TYPE_TABS.map((tab) => {
-                    const active = workTypeFilter === tab;
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Work List
+                </h2>
+
+                <button
+                  onClick={fetchWorks}
+                  className="rounded-xl bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-200"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {loading ? (
+                <p className="text-gray-600">Loading works...</p>
+              ) : works.length === 0 ? (
+                <p className="text-gray-600">No works found.</p>
+              ) : (
+                <div className="space-y-4">
+                  {works.map((work) => {
+                    const typeLabel = formatType(work?.type);
+                    const answerKeyText = getAnswerKeyText(work);
 
                     return (
-                      <button
-                        key={tab}
-                        onClick={() => setWorkTypeFilter(tab)}
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          active
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
+                      <div
+                        key={work.id}
+                        className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
                       >
-                        {tab}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-lg font-semibold text-gray-800">
+                              {work?.title || "Untitled Work"}
+                            </h3>
 
-              <div>
-                <p className="mb-2 text-sm font-semibold text-gray-700">
-                  Filter by submission status
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {STATUS_TABS.map((tab) => {
-                    const active = statusFilter === tab;
+                            <p className="mt-1 text-sm text-gray-600">
+                              {work?.class_name || "-"} | {getSubjectLabel(work)}
+                            </p>
 
-                    return (
-                      <button
-                        key={tab}
-                        onClick={() => setStatusFilter(tab)}
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          active
-                            ? "bg-gray-800 text-white"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                        }`}
-                      >
-                        {tab}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                                {typeLabel}
+                              </span>
 
-            {loading ? (
-              <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
-                <p className="text-gray-600">Loading work...</p>
-              </div>
-            ) : filteredWorks.length === 0 ? (
-              <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
-                <p className="text-lg font-semibold text-gray-700">
-                  No work found
-                </p>
-                <p className="mt-2 text-sm text-gray-500">
-                  Try changing the filters.
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {filteredWorks.map((work) => {
-                  const submission = submissionMap[work.id];
-                  const workType = normalizeWorkType(
-                    work?.type || work?.work_type
-                  );
-                  const status = submission
-                    ? normalizeSubmissionStatus(
-                        submission?.status,
-                        submission?.isSubmitted
-                      )
-                    : "Pending";
-
-                  const statusBadgeClass =
-                    status === "Checked"
-                      ? "bg-green-100 text-green-700"
-                      : status === "Submitted"
-                      ? "bg-indigo-100 text-indigo-700"
-                      : "bg-yellow-100 text-yellow-700";
-
-                  const workTypeBadgeClass =
-                    workType === "Class Work"
-                      ? "bg-purple-100 text-purple-700"
-                      : "bg-blue-100 text-blue-700";
-
-                  return (
-                    <div
-                      key={work.id}
-                      className="rounded-2xl bg-white p-5 shadow-sm"
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ${workTypeBadgeClass}`}
-                            >
-                              {workType}
-                            </span>
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClass}`}
-                            >
-                              {status}
-                            </span>
+                              {work?.due_date ? (
+                                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                                  Due: {formatDate(work.due_date)}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
 
-                          <h2 className="text-lg font-bold text-gray-800">
-                            {work?.title || "Untitled Work"}
-                          </h2>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(work.id)}
+                              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                              {expandedId === work.id ? "Hide" : "View"}
+                            </button>
 
-                          <div className="mt-2 grid gap-2 text-sm text-gray-600 md:grid-cols-3">
-                            <p>
-                              <span className="font-semibold text-gray-700">
-                                Class:
-                              </span>{" "}
-                              {getClassLabel(work)}
-                            </p>
-                            <p>
-                              <span className="font-semibold text-gray-700">
-                                Subject:
-                              </span>{" "}
-                              {getSubjectLabel(work)}
-                            </p>
-                            <p>
-                              <span className="font-semibold text-gray-700">
-                                Due Date:
-                              </span>{" "}
-                              {formatDate(work?.due_date)}
-                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWork(work.id)}
+                              className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
+                            >
+                              Delete
+                            </button>
                           </div>
+                        </div>
 
-                          {getDescriptionLabel(work) ? (
-                            <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">
-                              {getDescriptionLabel(work)}
-                            </p>
-                          ) : null}
+                        {expandedId === work.id && (
+                          <div className="mt-4 space-y-4">
+                            <div className="rounded-xl bg-gray-50 p-4">
+                              <h4 className="mb-2 font-semibold text-gray-800">
+                                Question Paper
+                              </h4>
 
-                          {submission ? (
-                            <div className="mt-3 space-y-1 text-sm text-gray-700">
+                              <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                                {getQuestionPaperText(work)}
+                              </pre>
+                            </div>
+
+                            {answerKeyText ? (
+                              <div className="rounded-xl bg-green-50 p-4">
+                                <h4 className="mb-2 font-semibold text-gray-800">
+                                  Answer Key
+                                </h4>
+
+                                <pre className="whitespace-pre-wrap text-sm text-gray-700">
+                                  {answerKeyText}
+                                </pre>
+                              </div>
+                            ) : null}
+
+                            <div className="grid gap-3 text-sm text-gray-600 md:grid-cols-2">
                               <p>
-                                <span className="font-semibold">Score:</span>{" "}
-                                {submission.score ?? "-"}
+                                <span className="font-semibold text-gray-700">
+                                  Created:
+                                </span>{" "}
+                                {formatDate(work?.created_at)}
                               </p>
+
                               <p>
-                                <span className="font-semibold">Feedback:</span>{" "}
-                                {submission.feedback || "-"}
+                                <span className="font-semibold text-gray-700">
+                                  Due:
+                                </span>{" "}
+                                {formatDate(work?.due_date)}
                               </p>
+
                               <p>
-                                <span className="font-semibold">Attempt:</span>{" "}
-                                {submission.attempt_no || 1}
+                                <span className="font-semibold text-gray-700">
+                                  Total Marks:
+                                </span>{" "}
+                                {work?.total_marks ?? "-"}
+                              </p>
+
+                              <p>
+                                <span className="font-semibold text-gray-700">
+                                  Question Count:
+                                </span>{" "}
+                                {work?.question_count ?? "-"}
                               </p>
                             </div>
-                          ) : null}
-                        </div>
-
-                        <div className="w-full md:w-auto">
-                          <button
-                            onClick={() =>
-                              (window.location.href = `/student-work/${work.id}`)
-                            }
-                            className="w-full rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 md:w-auto"
-                          >
-                            {submission?.isSubmitted
-                              ? status === "Checked"
-                                ? "View Checked Work"
-                                : "View Submission"
-                              : "Open Work"}
-                          </button>
-                        </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

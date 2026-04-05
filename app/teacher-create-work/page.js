@@ -47,7 +47,6 @@ const DIFFICULTY_OPTIONS = [
   { value: "hard", label: "Hard" },
 ];
 
-// change bucket names only if your project uses different ones
 const QUESTION_BUCKET = "work-files";
 const ANSWER_BUCKET = "work-files";
 const LESSON_BUCKET = "work-files";
@@ -82,7 +81,6 @@ export default function TeacherCreateWorkPage() {
   const [difficulty, setDifficulty] = useState("medium");
   const [totalMarks, setTotalMarks] = useState(20);
   const [questionCount, setQuestionCount] = useState(10);
-
   const [testPaperPattern, setTestPaperPattern] = useState("");
 
   const [lessonFiles, setLessonFiles] = useState([]);
@@ -145,9 +143,7 @@ export default function TeacherCreateWorkPage() {
 
     const { error: uploadError } = await supabase.storage
       .from(bucketName)
-      .upload(filePath, file, {
-        upsert: true,
-      });
+      .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
       throw uploadError;
@@ -243,10 +239,20 @@ export default function TeacherCreateWorkPage() {
         body: formData,
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+
+      let data = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch (parseError) {
+        if (!response.ok) {
+          throw new Error(rawText || "Failed to generate test paper.");
+        }
+        throw new Error("Server returned invalid JSON response.");
+      }
 
       if (!response.ok) {
-        throw new Error(data?.error || "Failed to generate test paper.");
+        throw new Error(data?.error || rawText || "Failed to generate test paper.");
       }
 
       const paperText =
@@ -438,7 +444,7 @@ export default function TeacherCreateWorkPage() {
               ) : null}
 
               {error ? (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 whitespace-pre-wrap">
                   {error}
                 </div>
               ) : null}

@@ -366,6 +366,36 @@ export default function AdminDashboard() {
     return alerts;
   }, [todayFees, todayExpense, netToday]);
 
+  const adminRecommendations = useMemo(() => {
+    const recommendations = [];
+
+    if (todayFees === 0) {
+      recommendations.push("💡 Start fee collection follow-up early to avoid a zero-collection day.");
+    }
+
+    if (todayExpense === 0) {
+      recommendations.push("🧾 Check if any school spending still needs to be entered in the system.");
+    }
+
+    if (netToday < 0) {
+      recommendations.push("⚠️ Review today's spending and discuss corrective action if needed.");
+    }
+
+    if (todayFees > 0 && netToday > 0) {
+      recommendations.push("✅ Keep the current collection momentum going tomorrow as well.");
+    }
+
+    if (todayFees === 0 && todayExpense === 0) {
+      recommendations.push("📌 Monitor admin activity closely tomorrow so records are updated on time.");
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push("✅ Admin operations look stable today. Continue routine monitoring.");
+    }
+
+    return recommendations;
+  }, [todayFees, todayExpense, netToday]);
+
   const feesRisk = useMemo(() => {
     if (todayFees === 0) {
       return {
@@ -458,7 +488,7 @@ export default function AdminDashboard() {
       label: "Stable",
       tone: "low",
       note: "Today's admin finances look under control",
-      };
+    };
   }, [feesRisk, expenseRisk, netRisk]);
 
   const riskCards = [
@@ -855,6 +885,26 @@ export default function AdminDashboard() {
                     </div>
                   );
                 })}
+              </div>
+            </section>
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                Admin Smart Recommendations
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Smart guidance based on today&apos;s admin financial activity.
+              </p>
+
+              <div className="space-y-3">
+                {adminRecommendations.map((item, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800"
+                  >
+                    {item}
+                  </div>
+                ))}
               </div>
             </section>
 

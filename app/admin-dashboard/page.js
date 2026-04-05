@@ -581,14 +581,8 @@ export default function AdminDashboard() {
 
   const chartData = useMemo(() => {
     return [
-      {
-        name: "Fees",
-        amount: todayFees,
-      },
-      {
-        name: "Expense",
-        amount: todayExpense,
-      },
+      { name: "Fees", amount: todayFees },
+      { name: "Expense", amount: todayExpense },
     ];
   }, [todayFees, todayExpense]);
 
@@ -612,7 +606,7 @@ export default function AdminDashboard() {
         <button
           type="button"
           onClick={() => router.push(alert.href)}
-          className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${styles.button}`}
+          className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm hover:shadow-md transition ${styles.button}`}
         >
           {alert.actionLabel}
         </button>
@@ -628,7 +622,7 @@ export default function AdminDashboard() {
         <button
           type="button"
           onClick={() => router.push(item.href)}
-          className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${styles.button}`}
+          className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm hover:shadow-md transition ${styles.button}`}
         >
           {item.actionLabel}
         </button>
@@ -639,7 +633,7 @@ export default function AdminDashboard() {
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white border rounded-xl shadow-sm px-6 py-4 text-gray-700 font-medium">
+        <div className="bg-white border rounded-2xl shadow-md px-6 py-4 text-gray-700 font-medium">
           Loading Admin Dashboard...
         </div>
       </div>
@@ -655,7 +649,7 @@ export default function AdminDashboard() {
 
         <div className="flex-1 p-6">
           <div className="mx-auto max-w-7xl">
-            <div className="mb-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-lg">
+            <div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 text-white shadow-lg">
               <h1 className="text-3xl font-bold">Admin Dashboard</h1>
               <p className="mt-2 text-sm md:text-base text-white/90">
                 Manage school operations efficiently with attendance, fees,
@@ -663,14 +657,14 @@ export default function AdminDashboard() {
               </p>
             </div>
 
-            <section className="mb-6 rounded-2xl bg-white p-5 shadow-md border border-gray-200">
+            <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Admin Risk Status
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
-                    Fast health view of today&apos;s admin financial activity.
+                    Fast health view of today's admin financial activity.
                   </p>
                 </div>
 
@@ -686,7 +680,7 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={index}
-                      className={`rounded-xl border p-4 ${styles.box}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.box}`}
                     >
                       <p className={`text-sm font-medium mb-2 ${styles.label}`}>
                         {card.title}
@@ -703,7 +697,7 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl bg-white p-5 shadow-md border border-blue-100">
                 <p className="text-gray-500">Total Students</p>
                 <h2 className="mt-2 text-3xl font-bold text-blue-600">
@@ -733,7 +727,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+            <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-3">
               <div className="rounded-2xl bg-white p-5 shadow-md border border-purple-100">
                 <p className="text-gray-500">Net Today</p>
                 <h2
@@ -748,7 +742,7 @@ export default function AdminDashboard() {
               <div
                 className={`rounded-2xl p-5 shadow-md border xl:col-span-2 ${financialStatus.box}`}
               >
-                <h2 className="mb-2 text-xl font-semibold text-gray-800">
+                <h2 className="mb-2 text-xl font-semibold text-gray-800 tracking-tight">
                   Quick Overview
                 </h2>
                 <p className={`font-medium ${financialStatus.tone}`}>
@@ -764,10 +758,10 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+            <div className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">
-                  Today&apos;s Financial Chart
+                <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
+                  Today's Financial Chart
                 </h2>
                 <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
                   Date: {today}
@@ -775,21 +769,21 @@ export default function AdminDashboard() {
               </div>
 
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3">
+                <div className="rounded-2xl border border-green-100 bg-green-50 px-4 py-3 shadow-sm">
                   <p className="text-sm text-green-700 font-medium">Fees</p>
                   <p className="text-xl font-bold text-green-800">
                     {formatCurrency(todayFees)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+                <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 shadow-sm">
                   <p className="text-sm text-red-700 font-medium">Expense</p>
                   <p className="text-xl font-bold text-red-800">
                     {formatCurrency(todayExpense)}
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3">
+                <div className="rounded-2xl border border-purple-100 bg-purple-50 px-4 py-3 shadow-sm">
                   <p className="text-sm text-purple-700 font-medium">Net</p>
                   <p className="text-xl font-bold text-purple-800">
                     {formatCurrency(netToday)}
@@ -832,16 +826,16 @@ export default function AdminDashboard() {
               </div>
 
               {todayFees === 0 && todayExpense === 0 ? (
-                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 shadow-sm">
                   No fee or expenditure entry is recorded for today yet.
                 </div>
               ) : null}
             </div>
 
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+            <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Admin Smart Alerts
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
@@ -864,7 +858,7 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={alert.id}
-                      className={`rounded-xl border p-4 ${styles.card}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.card}`}
                     >
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <h3 className={`font-semibold ${styles.title}`}>
@@ -888,19 +882,19 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-800 mb-3">
+            <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+              <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                 Admin Smart Recommendations
               </h2>
               <p className="text-sm text-gray-600 mb-4">
-                Smart guidance based on today&apos;s admin financial activity.
+                Smart guidance based on today's admin financial activity.
               </p>
 
               <div className="space-y-3">
                 {adminRecommendations.map((item, index) => (
                   <div
                     key={index}
-                    className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800"
+                    className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800 shadow-sm"
                   >
                     {item}
                   </div>
@@ -908,9 +902,9 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+            <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold text-gray-800">
+                <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                   Quick Actions
                 </h2>
                 <p className="mt-1 text-sm text-gray-600">
@@ -935,14 +929,14 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+            <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Tomorrow Watchlist
                   </h2>
                   <p className="mt-1 text-sm text-gray-600">
-                    Predictive follow-up points for tomorrow&apos;s admin work.
+                    Predictive follow-up points for tomorrow's admin work.
                   </p>
                 </div>
 
@@ -961,7 +955,7 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={item.id}
-                      className={`rounded-xl border p-4 ${styles.card}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.card}`}
                     >
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <h3 className={`font-semibold ${styles.title}`}>
@@ -985,8 +979,8 @@ export default function AdminDashboard() {
               </div>
             </section>
 
-            <div className="rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-              <h2 className="mb-2 text-xl font-semibold text-gray-800">
+            <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+              <h2 className="mb-2 text-xl font-semibold text-gray-800 tracking-tight">
                 System Overview
               </h2>
               <p className="text-gray-600">

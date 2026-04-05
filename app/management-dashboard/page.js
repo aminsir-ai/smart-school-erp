@@ -238,9 +238,7 @@ export default function ManagementPage() {
     }
   }
 
-  const totalTeachersMarked = useMemo(() => {
-    return attendanceList.length;
-  }, [attendanceList]);
+  const totalTeachersMarked = useMemo(() => attendanceList.length, [attendanceList]);
 
   const presentTodayCount = useMemo(() => {
     return attendanceList.filter((item) => item.status === "Present").length;
@@ -391,9 +389,7 @@ export default function ManagementPage() {
     if (totalFeesCollected > totalExpenditure) {
       recommendations.push("💰 Fees collection is healthy today.");
     } else if (totalFeesCollected < totalExpenditure) {
-      recommendations.push(
-        "⚠️ Expenses are higher than fees. Monitor spending."
-      );
+      recommendations.push("⚠️ Expenses are higher than fees. Monitor spending.");
     }
 
     if (pendingStudentsCount > 0) {
@@ -633,7 +629,7 @@ export default function ManagementPage() {
         <button
           type="button"
           onClick={() => router.push(action.href)}
-          className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
+          className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold bg-white text-gray-800 border border-white/70 shadow-sm hover:bg-gray-50 hover:shadow-md transition"
         >
           {action.label}
         </button>
@@ -671,7 +667,7 @@ export default function ManagementPage() {
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white border rounded-xl shadow-sm px-6 py-4 text-gray-700 font-medium">
+        <div className="bg-white border rounded-2xl shadow-md px-6 py-4 text-gray-700 font-medium">
           Loading Management Dashboard...
         </div>
       </div>
@@ -686,10 +682,10 @@ export default function ManagementPage() {
 
         <main className="flex-1 p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
-            <div className="bg-white rounded-xl shadow-sm border p-4 md:p-6 mb-6">
+            <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 mb-8">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
+                  <h1 className="text-2xl md:text-3xl font-bold text-gray-800 tracking-tight">
                     {dashboardTitle}
                   </h1>
                   <p className="text-gray-600 mt-2">
@@ -705,20 +701,20 @@ export default function ManagementPage() {
                     type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    className="border rounded-lg px-3 py-2 w-full lg:w-auto"
+                    className="border rounded-xl px-3 py-2 w-full lg:w-auto"
                   />
                 </div>
               </div>
             </div>
 
-            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+            <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 mb-8">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Dashboard Risk Status
                   </h2>
                   <p className="text-gray-600 text-sm mt-1">
-                    Quick health signals for today&apos;s operations and alerts.
+                    Quick health signals for today's operations and alerts.
                   </p>
                 </div>
                 <div className="text-sm text-gray-600">
@@ -736,7 +732,7 @@ export default function ManagementPage() {
                   return (
                     <div
                       key={index}
-                      className={`rounded-xl border p-4 ${styles.box}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.box}`}
                     >
                       <p className={`text-sm font-medium mb-2 ${styles.label}`}>
                         {card.title}
@@ -753,10 +749,10 @@ export default function ManagementPage() {
               </div>
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+            <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 mb-8">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Smart Alerts
                   </h2>
                   <p className="text-gray-600 text-sm mt-1">
@@ -765,15 +761,15 @@ export default function ManagementPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 w-full lg:w-auto">
-                  <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                  <div className="bg-red-50 border border-red-200 rounded-2xl px-3 py-2 text-center shadow-sm">
                     <p className="text-xs text-red-700 font-medium">High</p>
                     <p className="text-lg font-bold text-red-800">{highAlertsCount}</p>
                   </div>
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-center">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl px-3 py-2 text-center shadow-sm">
                     <p className="text-xs text-yellow-700 font-medium">Medium</p>
                     <p className="text-lg font-bold text-yellow-800">{mediumAlertsCount}</p>
                   </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center">
+                  <div className="bg-green-50 border border-green-200 rounded-2xl px-3 py-2 text-center shadow-sm">
                     <p className="text-xs text-green-700 font-medium">Good / Normal</p>
                     <p className="text-lg font-bold text-green-800">{normalAlertsCount}</p>
                   </div>
@@ -788,7 +784,7 @@ export default function ManagementPage() {
                   return (
                     <div
                       key={alert.id}
-                      className={`rounded-xl border p-4 ${styles.card}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.card}`}
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <h3 className={`font-semibold ${styles.title}`}>
@@ -812,19 +808,19 @@ export default function ManagementPage() {
               </div>
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-3">
+            <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 mb-8">
+              <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                 Smart Recommendations
               </h2>
               <p className="text-gray-600 text-sm mb-4">
-                AI-powered suggestions based on today&apos;s data.
+                AI-powered suggestions based on today's data.
               </p>
 
               <div className="space-y-2">
                 {smartRecommendations.map((rec, index) => (
                   <div
                     key={index}
-                    className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm font-medium"
+                    className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-2xl text-sm font-medium shadow-sm"
                   >
                     {rec}
                   </div>
@@ -832,14 +828,14 @@ export default function ManagementPage() {
               </div>
             </section>
 
-            <section className="bg-white rounded-xl shadow-sm border p-5 mb-6">
+            <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 mb-8">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">
+                  <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                     Tomorrow Watchlist
                   </h2>
                   <p className="text-gray-600 text-sm mt-1">
-                    Predictive follow-up points based on today&apos;s school data.
+                    Predictive follow-up points based on today's school data.
                   </p>
                 </div>
               </div>
@@ -852,7 +848,7 @@ export default function ManagementPage() {
                   return (
                     <div
                       key={index}
-                      className={`rounded-xl border p-4 ${styles.card}`}
+                      className={`rounded-2xl border p-4 shadow-sm ${styles.card}`}
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <h3 className={`font-semibold ${styles.title}`}>
@@ -876,11 +872,11 @@ export default function ManagementPage() {
               </div>
             </section>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
               {summaryCards.map((card, index) => (
                 <div
                   key={index}
-                  className="bg-white rounded-xl shadow-sm border p-5"
+                  className="bg-white rounded-2xl shadow-md border border-gray-200 p-5"
                 >
                   <p className="text-sm text-gray-500 mb-2">{card.title}</p>
                   <h2 className="text-2xl font-bold text-gray-800">
@@ -891,8 +887,8 @@ export default function ManagementPage() {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <section className="bg-white rounded-xl shadow-sm border p-5">
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">
+              <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+                <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                   Teacher Attendance Report
                 </h2>
                 <p className="text-gray-600 text-sm mb-4">
@@ -900,12 +896,12 @@ export default function ManagementPage() {
                 </p>
 
                 {attendanceMessage ? (
-                  <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                  <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-2xl px-3 py-2">
                     {attendanceMessage}
                   </div>
                 ) : null}
 
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-2xl overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b">
                     <h3 className="font-semibold text-gray-800">
                       Attendance List
@@ -975,15 +971,15 @@ export default function ManagementPage() {
                 </div>
               </section>
 
-              <section className="bg-white rounded-xl shadow-sm border p-5">
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">
+              <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+                <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                   Absent Teachers Report
                 </h2>
                 <p className="text-gray-600 text-sm mb-4">
                   Teachers absent, on leave, or half day with reasons.
                 </p>
 
-                <div className="border rounded-lg overflow-hidden">
+                <div className="border rounded-2xl overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b">
                     <h3 className="font-semibold text-gray-800">
                       Absent / Leave Summary
@@ -1045,8 +1041,8 @@ export default function ManagementPage() {
 
               {canViewFinance && (
                 <>
-                  <section className="bg-white rounded-xl shadow-sm border p-5">
-                    <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                  <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+                    <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                       Fees Collection Report
                     </h2>
                     <p className="text-gray-600 text-sm mb-4">
@@ -1054,12 +1050,12 @@ export default function ManagementPage() {
                     </p>
 
                     {feesMessage ? (
-                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-2xl px-3 py-2">
                         {feesMessage}
                       </div>
                     ) : null}
 
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-2xl overflow-hidden">
                       <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-gray-800">
@@ -1126,8 +1122,8 @@ export default function ManagementPage() {
                     </div>
                   </section>
 
-                  <section className="bg-white rounded-xl shadow-sm border p-5">
-                    <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                  <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+                    <h2 className="text-xl font-semibold text-gray-800 tracking-tight mb-3">
                       Expenditure Report
                     </h2>
                     <p className="text-gray-600 text-sm mb-4">
@@ -1135,12 +1131,12 @@ export default function ManagementPage() {
                     </p>
 
                     {expenseMessage ? (
-                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-2xl px-3 py-2">
                         {expenseMessage}
                       </div>
                     ) : null}
 
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-2xl overflow-hidden">
                       <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-gray-800">
@@ -1203,10 +1199,10 @@ export default function ManagementPage() {
                     </div>
                   </section>
 
-                  <section className="bg-white rounded-xl shadow-sm border p-5 xl:col-span-2">
+                  <section className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 xl:col-span-2">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
                       <div>
-                        <h2 className="text-xl font-semibold text-gray-800">
+                        <h2 className="text-xl font-semibold text-gray-800 tracking-tight">
                           Outstanding Fees Report
                         </h2>
                         <p className="text-gray-600 text-sm mt-1">
@@ -1222,12 +1218,12 @@ export default function ManagementPage() {
                     </div>
 
                     {outstandingMessage ? (
-                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-lg px-3 py-2">
+                      <div className="mb-4 text-sm font-medium text-gray-700 bg-gray-50 border rounded-2xl px-3 py-2">
                         {outstandingMessage}
                       </div>
                     ) : null}
 
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-2xl overflow-hidden">
                       <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-gray-800">

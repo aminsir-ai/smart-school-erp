@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -70,6 +71,8 @@ function getWatchlistLabel(priority) {
 }
 
 export default function ManagementPage() {
+  const router = useRouter();
+
   const [userName, setUserName] = useState("Management");
   const [userRole, setUserRole] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -451,7 +454,8 @@ export default function ManagementPage() {
     if (totalExpenditure > totalFeesCollected) {
       watchlist.push({
         title: "Expense planning review",
-        message: "Tomorrow expense planning should be checked before approving new spending.",
+        message:
+          "Tomorrow expense planning should be checked before approving new spending.",
         priority: "watch",
       });
     }
@@ -464,7 +468,8 @@ export default function ManagementPage() {
     ) {
       watchlist.push({
         title: "Low activity day",
-        message: "Records were quiet today, but pending fee follow-up should continue tomorrow.",
+        message:
+          "Records were quiet today, but pending fee follow-up should continue tomorrow.",
         priority: "watch",
       });
     }
@@ -488,6 +493,82 @@ export default function ManagementPage() {
     totalOutstanding,
     totalTeachersMarked,
   ]);
+
+  function getAlertAction(alert) {
+    const text = `${alert?.title || ""} ${alert?.message || ""}`.toLowerCase();
+
+    if (text.includes("attendance")) {
+      return {
+        label: "Mark Attendance",
+        href: "/admin-teacher-attendance",
+      };
+    }
+
+    if (
+      text.includes("fee") &&
+      !text.includes("outstanding") &&
+      !text.includes("due") &&
+      !text.includes("pending")
+    ) {
+      return {
+        label: "Collect Fees",
+        href: "/admin-fees",
+      };
+    }
+
+    if (
+      text.includes("outstanding") ||
+      text.includes("due") ||
+      text.includes("pending")
+    ) {
+      return {
+        label: "View Outstanding",
+        href: "/admin-outstanding-fees",
+      };
+    }
+
+    if (text.includes("expense") || text.includes("expenditure")) {
+      return {
+        label: "Add Expense",
+        href: "/admin-expenditure",
+      };
+    }
+
+    return null;
+  }
+
+  function getWatchlistAction(item) {
+    const text = `${item?.title || ""} ${item?.message || ""}`.toLowerCase();
+
+    if (text.includes("attendance")) {
+      return {
+        label: "Mark Attendance",
+        href: "/admin-teacher-attendance",
+      };
+    }
+
+    if (
+      text.includes("fee") ||
+      text.includes("recovery") ||
+      text.includes("overdue") ||
+      text.includes("outstanding") ||
+      text.includes("due")
+    ) {
+      return {
+        label: "View Outstanding",
+        href: "/admin-outstanding-fees",
+      };
+    }
+
+    if (text.includes("expense") || text.includes("spending")) {
+      return {
+        label: "Add Expense",
+        href: "/admin-expenditure",
+      };
+    }
+
+    return null;
+  }
 
   const riskCards = [
     {
@@ -631,6 +712,7 @@ export default function ManagementPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {smartAlerts.map((alert) => {
                   const styles = getAlertStyles(alert.severity);
+                  const action = getAlertAction(alert);
 
                   return (
                     <div
@@ -647,9 +729,22 @@ export default function ManagementPage() {
                           {getSeverityLabel(alert.severity)}
                         </span>
                       </div>
+
                       <p className={`text-sm leading-6 ${styles.text}`}>
                         {alert.message}
                       </p>
+
+                      {action ? (
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() => router.push(action.href)}
+                            className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
+                          >
+                            {action.label}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -691,6 +786,7 @@ export default function ManagementPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {tomorrowWatchlist.map((item, index) => {
                   const styles = getWatchlistStyles(item.priority);
+                  const action = getWatchlistAction(item);
 
                   return (
                     <div
@@ -707,9 +803,22 @@ export default function ManagementPage() {
                           {getWatchlistLabel(item.priority)}
                         </span>
                       </div>
+
                       <p className={`text-sm leading-6 ${styles.text}`}>
                         {item.message}
                       </p>
+
+                      {action ? (
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() => router.push(action.href)}
+                            className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
+                          >
+                            {action.label}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

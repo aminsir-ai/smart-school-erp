@@ -498,6 +498,83 @@ export default function AdminDashboard() {
               ) : null}
             </div>
 
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Admin Smart Alerts
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Important financial attention points and suggested admin actions.
+                  </p>
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Total Alerts:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {adminSmartAlerts.length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {adminSmartAlerts.map((alert) => {
+                  const styles = getAlertStyles(alert.severity);
+
+                  return (
+                    <div
+                      key={alert.id}
+                      className={`rounded-xl border p-4 ${styles.card}`}
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <h3 className={`font-semibold ${styles.title}`}>
+                          {alert.title}
+                        </h3>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${styles.badge}`}
+                        >
+                          {getSeverityLabel(alert.severity)}
+                        </span>
+                      </div>
+
+                      <p className={`text-sm leading-6 ${styles.text}`}>
+                        {alert.message}
+                      </p>
+
+                      {renderAlertButton(alert, styles)}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Quick Actions
+                </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Jump quickly to the most important admin tasks.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {quickActions.map((action) => (
+                  <button
+                    key={action.title}
+                    type="button"
+                    onClick={() => router.push(action.href)}
+                    className={`rounded-2xl border p-5 text-left shadow-sm transition hover:shadow-md ${action.tone}`}
+                  >
+                    <h3 className="text-lg font-semibold">{action.title}</h3>
+                    <p className="mt-2 text-sm opacity-90">
+                      {action.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <div className="rounded-2xl bg-white p-6 shadow-md border border-gray-200">
               <h2 className="mb-2 text-xl font-semibold text-gray-800">
                 System Overview

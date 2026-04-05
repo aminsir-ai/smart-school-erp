@@ -495,42 +495,67 @@ export default function ManagementPage() {
   ]);
 
   function getAlertAction(alert) {
-    const text = `${alert?.title || ""} ${alert?.message || ""}`.toLowerCase();
+    const title = `${alert?.title || ""}`.toLowerCase();
+    const message = `${alert?.message || ""}`.toLowerCase();
+    const text = `${title} ${message}`;
 
-    if (text.includes("attendance")) {
+    const hasAttendance =
+      text.includes("attendance") ||
+      text.includes("teacher attendance") ||
+      text.includes("absent") ||
+      text.includes("leave") ||
+      text.includes("half day");
+
+    const hasOutstanding =
+      text.includes("outstanding") ||
+      text.includes("pending fee") ||
+      text.includes("pending dues") ||
+      text.includes("pending students") ||
+      text.includes("overdue") ||
+      text.includes("dues") ||
+      text.includes("due");
+
+    const hasExpense =
+      text.includes("expense") ||
+      text.includes("expenses") ||
+      text.includes("expenditure") ||
+      text.includes("spending");
+
+    const hasFeeCollection =
+      text.includes("fee collection") ||
+      text.includes("fees collection") ||
+      text.includes("fee payment") ||
+      text.includes("fee payments") ||
+      text.includes("fees collected") ||
+      text.includes("collection today") ||
+      text.includes("collect fee") ||
+      (text.includes("fee") && !hasOutstanding);
+
+    if (hasAttendance) {
       return {
         label: "Mark Attendance",
         href: "/admin-teacher-attendance",
       };
     }
 
-    if (
-      text.includes("fee") &&
-      !text.includes("outstanding") &&
-      !text.includes("due") &&
-      !text.includes("pending")
-    ) {
-      return {
-        label: "Collect Fees",
-        href: "/admin-fees",
-      };
-    }
-
-    if (
-      text.includes("outstanding") ||
-      text.includes("due") ||
-      text.includes("pending")
-    ) {
+    if (hasOutstanding) {
       return {
         label: "View Outstanding",
         href: "/admin-outstanding-fees",
       };
     }
 
-    if (text.includes("expense") || text.includes("expenditure")) {
+    if (hasExpense) {
       return {
         label: "Add Expense",
         href: "/admin-expenditure",
+      };
+    }
+
+    if (hasFeeCollection) {
+      return {
+        label: "Collect Fees",
+        href: "/admin-fees",
       };
     }
 
@@ -538,29 +563,53 @@ export default function ManagementPage() {
   }
 
   function getWatchlistAction(item) {
-    const text = `${item?.title || ""} ${item?.message || ""}`.toLowerCase();
+    const title = `${item?.title || ""}`.toLowerCase();
+    const message = `${item?.message || ""}`.toLowerCase();
+    const text = `${title} ${message}`;
 
-    if (text.includes("attendance")) {
+    const hasAttendance =
+      text.includes("attendance") ||
+      text.includes("teacher attendance") ||
+      text.includes("absent") ||
+      text.includes("leave");
+
+    const hasOutstanding =
+      text.includes("fee recovery") ||
+      text.includes("recovery") ||
+      text.includes("outstanding") ||
+      text.includes("overdue") ||
+      text.includes("pending") ||
+      text.includes("dues") ||
+      text.includes("due");
+
+    const hasExpense =
+      text.includes("expense") ||
+      text.includes("expenses") ||
+      text.includes("expenditure") ||
+      text.includes("spending");
+
+    const isNonActionable =
+      text.includes("stable outlook") ||
+      text.includes("no major carry-forward risk") ||
+      text.includes("low activity day");
+
+    if (isNonActionable) return null;
+
+    if (hasAttendance) {
       return {
         label: "Mark Attendance",
         href: "/admin-teacher-attendance",
       };
     }
 
-    if (
-      text.includes("fee") ||
-      text.includes("recovery") ||
-      text.includes("overdue") ||
-      text.includes("outstanding") ||
-      text.includes("due")
-    ) {
+    if (hasOutstanding) {
       return {
         label: "View Outstanding",
         href: "/admin-outstanding-fees",
       };
     }
 
-    if (text.includes("expense") || text.includes("spending")) {
+    if (hasExpense) {
       return {
         label: "Add Expense",
         href: "/admin-expenditure",

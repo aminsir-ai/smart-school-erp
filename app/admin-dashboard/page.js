@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -14,10 +14,20 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
+  Cell,
 } from "recharts";
 
 function formatCurrency(value) {
   return `₹${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
+function formatAxisCurrency(value) {
+  if (!value) return "₹0";
+  return `₹${Number(value).toLocaleString("en-IN")}`;
+}
+
+function getTodayDate() {
+  return new Date().toISOString().split("T")[0];
 }
 
 export default function AdminDashboard() {
@@ -31,7 +41,7 @@ export default function AdminDashboard() {
   const [todayExpense, setTodayExpense] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDate();
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -53,7 +63,6 @@ export default function AdminDashboard() {
       setUserName(user.name || user.full_name || "Admin");
       setUserRole(user.role || "");
 
-      // Strict admin-only access
       if (user.role !== "admin") {
         window.location.href = getDefaultRouteByRole(user.role);
         return;
@@ -77,36 +86,43 @@ export default function AdminDashboard() {
     try {
       setIsLoading(true);
 
-      const { count: studentCount } = await supabase
-        .from("students")
-        .select("*", { count: "exact", head: true });
+      const [
+        { count: studentCount, error: studentError },
+        { count: teacherCount, error: teacherError },
+        { data: feeData, error: feeError },
+        { data: expenseData, error: expenseError },
+      ] = await Promise.all([
+        supabase.from("students").select("*", { count: "exact", head: true }),
+        supabase.from("teachers").select("*", { count: "exact", head: true }),
+        supabase.from("fee_payments").select("amount").eq("payment_date", today),
+        supabase.from("expenditures").select("amount").eq("expense_date", today),
+      ]);
 
-      const { count: teacherCount } = await supabase
-        .from("teachers")
-        .select("*", { count: "exact", head: true });
+      if (studentError) console.log("Student count error:", studentError);
+      if (teacherError) console.log("Teacher count error:", teacherError);
+      if (feeError) console.log("Fee data error:", feeError);
+      if (expenseError) console.log("Expense data error:", expenseError);
 
-      const { data: feeData } = await supabase
-        .from("fee_payments")
-        .select("amount")
-        .eq("payment_date", today);
+      const totalFeeAmount = (feeData || []).reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0
+      );
 
-      const { data: expenseData } = await supabase
-        .from("expenditures")
-        .select("amount")
-        .eq("expense_date", today);
+      const totalExpenseAmount = (expenseData || []).reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0
+      );
 
       setStudents(studentCount || 0);
       setTeachers(teacherCount || 0);
-
-      setTodayFees(
-        (feeData || []).reduce((sum, item) => sum + Number(item.amount || 0), 0)
-      );
-
-      setTodayExpense(
-        (expenseData || []).reduce((sum, item) => sum + Number(item.amount || 0), 0)
-      );
+      setTodayFees(totalFeeAmount);
+      setTodayExpense(totalExpenseAmount);
     } catch (error) {
       console.log("Dashboard fetch error:", error);
+      setStudents(0);
+      setTeachers(0);
+      setTodayFees(0);
+      setTodayExpense(0);
     } finally {
       setIsLoading(false);
     }
@@ -114,13 +130,56 @@ export default function AdminDashboard() {
 
   const netToday = todayFees - todayExpense;
 
-  const chartData = [
-    {
-      name: "Today",
-      Fees: todayFees,
-      Expense: todayExpense,
-    },
-  ];
+  const financialStatus = useMemo(() => {
+    if (todayFees === 0 && todayExpense === 0) {
+      return {
+        label: "No financial activity today",
+        tone: "text-gray-600",
+        box: "bg-gray-50 border-gray-200",
+      };
+    }
+
+    if (netToday > 0) {
+      return {
+        label: "Positive balance today",
+        tone: "text-green-700",
+        box: "bg-green-50 border-green-200",
+      };
+    }
+
+    if (netToday < 0) {
+      return {
+        label: "Expenses are higher today",
+        tone: "text-red-700",
+        box: "bg-red-50 border-red-200",
+      };
+    }
+
+    return {
+      label: "Balanced today",
+      tone: "text-blue-700",
+      box: "bg-blue-50 border-blue-200",
+    };
+  }, [todayFees, todayExpense, netToday]);
+
+  const chartData = useMemo(() => {
+    return [
+      {
+        name: "Fees",
+        amount: todayFees,
+      },
+      {
+        name: "Expense",
+        amount: todayExpense,
+      },
+    ];
+  }, [todayFees, todayExpense]);
+
+  const chartMaxValue = useMemo(() => {
+    const highest = Math.max(todayFees, todayExpense, 0);
+    if (highest === 0) return 1000;
+    return Math.ceil(highest * 1.2);
+  }, [todayFees, todayExpense]);
 
   if (isCheckingAuth) {
     return (
@@ -191,11 +250,18 @@ export default function AdminDashboard() {
                 </h2>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 shadow-md border border-sky-100 xl:col-span-2">
+              <div
+                className={`rounded-2xl p-5 shadow-md border xl:col-span-2 ${financialStatus.box}`}
+              >
                 <h2 className="mb-2 text-xl font-semibold text-gray-800">
                   Quick Overview
                 </h2>
-                <p className="text-gray-600">
+                <p className={`font-medium ${financialStatus.tone}`}>
+                  {isLoading
+                    ? "Loading today’s overview..."
+                    : financialStatus.label}
+                </p>
+                <p className="mt-2 text-gray-600">
                   This dashboard gives you a quick daily summary of student and
                   teacher strength, fees collected, expenses recorded, and net
                   balance for today.
@@ -204,28 +270,77 @@ export default function AdminDashboard() {
             </div>
 
             <div className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-              <div className="mb-4 flex justify-between">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <h2 className="text-xl font-semibold text-gray-800">
-                  Today's Financial Chart
+                  Today&apos;s Financial Chart
                 </h2>
                 <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
                   Date: {today}
                 </div>
               </div>
 
+              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-green-100 bg-green-50 px-4 py-3">
+                  <p className="text-sm text-green-700 font-medium">Fees</p>
+                  <p className="text-xl font-bold text-green-800">
+                    {formatCurrency(todayFees)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-700 font-medium">Expense</p>
+                  <p className="text-xl font-bold text-red-800">
+                    {formatCurrency(todayExpense)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3">
+                  <p className="text-sm text-purple-700 font-medium">Net</p>
+                  <p className="text-xl font-bold text-purple-800">
+                    {formatCurrency(netToday)}
+                  </p>
+                </div>
+              </div>
+
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
+                  <BarChart
+                    data={chartData}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 10 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <YAxis
+                      domain={[0, chartMaxValue]}
+                      tickFormatter={formatAxisCurrency}
+                      width={90}
+                    />
+                    <Tooltip
+                      formatter={(value) => formatCurrency(value)}
+                      cursor={{ fill: "#f3f4f6" }}
+                    />
                     <Legend />
-                    <Bar dataKey="Fees" fill="#22c55e" />
-                    <Bar dataKey="Expense" fill="#ef4444" />
+                    <Bar
+                      dataKey="amount"
+                      name="Amount"
+                      radius={[10, 10, 0, 0]}
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.name === "Fees" ? "#22c55e" : "#ef4444"}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+
+              {todayFees === 0 && todayExpense === 0 ? (
+                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                  No fee or expenditure entry is recorded for today yet.
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl bg-white p-6 shadow-md border border-gray-200">

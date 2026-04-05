@@ -570,6 +570,22 @@ export default function ManagementPage() {
     return null;
   }
 
+  function renderActionButton(action) {
+    if (!action) return null;
+
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => router.push(action.href)}
+          className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
+        >
+          {action.label}
+        </button>
+      </div>
+    );
+  }
+
   const riskCards = [
     {
       title: "Overall Status",
@@ -734,17 +750,7 @@ export default function ManagementPage() {
                         {alert.message}
                       </p>
 
-                      {action ? (
-                        <div className="mt-4">
-                          <button
-                            type="button"
-                            onClick={() => router.push(action.href)}
-                            className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
-                          >
-                            {action.label}
-                          </button>
-                        </div>
-                      ) : null}
+                      {renderActionButton(action)}
                     </div>
                   );
                 })}
@@ -808,17 +814,7 @@ export default function ManagementPage() {
                         {item.message}
                       </p>
 
-                      {action ? (
-                        <div className="mt-4">
-                          <button
-                            type="button"
-                            onClick={() => router.push(action.href)}
-                            className="inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/80 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-white transition"
-                          >
-                            {action.label}
-                          </button>
-                        </div>
-                      ) : null}
+                      {renderActionButton(action)}
                     </div>
                   );
                 })}

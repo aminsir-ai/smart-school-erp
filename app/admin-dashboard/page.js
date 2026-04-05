@@ -469,11 +469,12 @@ export default function AdminDashboard() {
       message: topAlert.message || "Review the top dashboard item first.",
       actionLabel: topAlert.actionLabel || null,
       href: topAlert.href || null,
-      priority: topAlert.severity === "high"
-        ? "high"
-        : topAlert.severity === "medium"
-        ? "medium"
-        : "watch",
+      priority:
+        topAlert.severity === "high"
+          ? "high"
+          : topAlert.severity === "medium"
+          ? "medium"
+          : "watch",
     };
   }, [adminSmartAlerts]);
 
@@ -695,6 +696,18 @@ export default function AdminDashboard() {
     return watchlist.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   }, [todayFees, todayExpense, netToday]);
 
+  const automationSummary = useMemo(() => {
+    const topWatchlist = tomorrowWatchlist[0];
+
+    return {
+      prioritizedAlerts: adminSmartAlerts.length,
+      topAction:
+        topPriorityAction.actionLabel || "No action needed",
+      tomorrowFocus:
+        topWatchlist?.title || "Stable outlook",
+    };
+  }, [adminSmartAlerts, topPriorityAction, tomorrowWatchlist]);
+
   const chartData = useMemo(() => {
     return [
       { name: "Fees", amount: todayFees },
@@ -774,6 +787,37 @@ export default function AdminDashboard() {
                 expenditure, outstanding dues, and reports.
               </p>
             </div>
+
+            <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-md">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Auto Prioritized Alerts
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-gray-800">
+                    {automationSummary.prioritizedAlerts}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Top Action
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-gray-800">
+                    {automationSummary.topAction}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Tomorrow Focus
+                  </p>
+                  <p className="mt-1 text-lg font-bold text-gray-800">
+                    {automationSummary.tomorrowFocus}
+                  </p>
+                </div>
+              </div>
+            </section>
 
             <section className={`mb-8 rounded-2xl border p-6 shadow-md ${priorityBannerStyles.box}`}>
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

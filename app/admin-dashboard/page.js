@@ -91,6 +91,53 @@ function getRiskCardStyles(tone) {
   };
 }
 
+function getWatchlistStyles(priority) {
+  if (priority === "high") {
+    return {
+      card: "bg-red-50 border-red-200",
+      badge: "bg-red-100 text-red-700",
+      title: "text-red-800",
+      text: "text-red-700",
+      button: "bg-red-600 hover:bg-red-700 text-white",
+    };
+  }
+
+  if (priority === "medium") {
+    return {
+      card: "bg-yellow-50 border-yellow-200",
+      badge: "bg-yellow-100 text-yellow-700",
+      title: "text-yellow-800",
+      text: "text-yellow-700",
+      button: "bg-yellow-600 hover:bg-yellow-700 text-white",
+    };
+  }
+
+  if (priority === "watch") {
+    return {
+      card: "bg-blue-50 border-blue-200",
+      badge: "bg-blue-100 text-blue-700",
+      title: "text-blue-800",
+      text: "text-blue-700",
+      button: "bg-blue-600 hover:bg-blue-700 text-white",
+    };
+  }
+
+  return {
+    card: "bg-green-50 border-green-200",
+    badge: "bg-green-100 text-green-700",
+    title: "text-green-800",
+    text: "text-green-700",
+    button: "bg-green-600 hover:bg-green-700 text-white",
+  };
+}
+
+function getWatchlistLabel(priority) {
+  if (priority === "high") return "High";
+  if (priority === "medium") return "Medium";
+  if (priority === "watch") return "Watch";
+  return "Clear";
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
@@ -411,7 +458,7 @@ export default function AdminDashboard() {
       label: "Stable",
       tone: "low",
       note: "Today's admin finances look under control",
-    };
+      };
   }, [feesRisk, expenseRisk, netRisk]);
 
   const riskCards = [
@@ -440,6 +487,67 @@ export default function AdminDashboard() {
       note: netRisk.note,
     },
   ];
+
+  const tomorrowWatchlist = useMemo(() => {
+    const watchlist = [];
+
+    if (todayFees === 0) {
+      watchlist.push({
+        id: "watch-fees",
+        title: "Fee collection follow-up",
+        message: "Fee collection should be reviewed early tomorrow.",
+        priority: "medium",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+      });
+    }
+
+    if (todayExpense === 0) {
+      watchlist.push({
+        id: "watch-expense",
+        title: "Expense entry reminder",
+        message: "Check whether any expenses need to be recorded tomorrow.",
+        priority: "watch",
+        actionLabel: "Add Expense",
+        href: "/admin-expenditure",
+      });
+    }
+
+    if (netToday < 0) {
+      watchlist.push({
+        id: "watch-net",
+        title: "Net balance review",
+        message: "Tomorrow financial review is recommended because expenses are higher than fees.",
+        priority: "high",
+        actionLabel: "Open Management Dashboard",
+        href: "/management",
+      });
+    }
+
+    if (todayFees > 0 && netToday > 0) {
+      watchlist.push({
+        id: "watch-positive",
+        title: "Continue healthy collection",
+        message: "Maintain the same collection momentum tomorrow.",
+        priority: "clear",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+      });
+    }
+
+    if (watchlist.length === 0) {
+      watchlist.push({
+        id: "watch-stable",
+        title: "Stable outlook",
+        message: "No major carry-forward admin financial risk for tomorrow.",
+        priority: "clear",
+        actionLabel: null,
+        href: null,
+      });
+    }
+
+    return watchlist;
+  }, [todayFees, todayExpense, netToday]);
 
   const chartData = useMemo(() => {
     return [
@@ -477,6 +585,22 @@ export default function AdminDashboard() {
           className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${styles.button}`}
         >
           {alert.actionLabel}
+        </button>
+      </div>
+    );
+  }
+
+  function renderWatchlistButton(item, styles) {
+    if (!item?.actionLabel || !item?.href) return null;
+
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => router.push(item.href)}
+          className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${styles.button}`}
+        >
+          {item.actionLabel}
         </button>
       </div>
     );
@@ -758,6 +882,56 @@ export default function AdminDashboard() {
                     </p>
                   </button>
                 ))}
+              </div>
+            </section>
+
+            <section className="mb-6 rounded-2xl bg-white p-6 shadow-md border border-gray-200">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Tomorrow Watchlist
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Predictive follow-up points for tomorrow&apos;s admin work.
+                  </p>
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Items:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {tomorrowWatchlist.length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {tomorrowWatchlist.map((item) => {
+                  const styles = getWatchlistStyles(item.priority);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-xl border p-4 ${styles.card}`}
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <h3 className={`font-semibold ${styles.title}`}>
+                          {item.title}
+                        </h3>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${styles.badge}`}
+                        >
+                          {getWatchlistLabel(item.priority)}
+                        </span>
+                      </div>
+
+                      <p className={`text-sm leading-6 ${styles.text}`}>
+                        {item.message}
+                      </p>
+
+                      {renderWatchlistButton(item, styles)}
+                    </div>
+                  );
+                })}
               </div>
             </section>
 

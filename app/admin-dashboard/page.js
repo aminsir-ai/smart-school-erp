@@ -138,6 +138,46 @@ function getWatchlistLabel(priority) {
   return "Clear";
 }
 
+function getPriorityBannerStyles(priority) {
+  if (priority === "high") {
+    return {
+      box: "bg-red-50 border-red-200",
+      badge: "bg-red-100 text-red-700",
+      title: "text-red-800",
+      text: "text-red-700",
+      button: "bg-red-600 hover:bg-red-700 text-white",
+    };
+  }
+
+  if (priority === "medium") {
+    return {
+      box: "bg-yellow-50 border-yellow-200",
+      badge: "bg-yellow-100 text-yellow-700",
+      title: "text-yellow-800",
+      text: "text-yellow-700",
+      button: "bg-yellow-600 hover:bg-yellow-700 text-white",
+    };
+  }
+
+  if (priority === "watch") {
+    return {
+      box: "bg-blue-50 border-blue-200",
+      badge: "bg-blue-100 text-blue-700",
+      title: "text-blue-800",
+      text: "text-blue-700",
+      button: "bg-blue-600 hover:bg-blue-700 text-white",
+    };
+  }
+
+  return {
+    box: "bg-green-50 border-green-200",
+    badge: "bg-green-100 text-green-700",
+    title: "text-green-800",
+    text: "text-green-700",
+    button: "bg-green-600 hover:bg-green-700 text-white",
+  };
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
@@ -370,6 +410,72 @@ export default function AdminDashboard() {
 
     return alerts.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   }, [todayFees, todayExpense, netToday]);
+
+  const topPriorityAction = useMemo(() => {
+    const topAlert = adminSmartAlerts[0];
+
+    if (!topAlert) {
+      return {
+        title: "No immediate action needed",
+        message: "Today's admin dashboard looks stable.",
+        actionLabel: null,
+        href: null,
+        priority: "clear",
+      };
+    }
+
+    if (topAlert.id === "negative-net") {
+      return {
+        title: "Top Priority Action: Review Net Balance",
+        message: "Expenses are ahead of fees today. Review spending and take corrective action first.",
+        actionLabel: "Open Management Dashboard",
+        href: "/management",
+        priority: "high",
+      };
+    }
+
+    if (topAlert.id === "fees-zero") {
+      return {
+        title: "Top Priority Action: Collect Fees",
+        message: "No fee collection has been recorded yet. Start fee collection follow-up first.",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+        priority: "medium",
+      };
+    }
+
+    if (topAlert.id === "expense-zero") {
+      return {
+        title: "Top Priority Action: Add Expense",
+        message: "Check whether today's spending needs to be entered before the day closes.",
+        actionLabel: "Add Expense",
+        href: "/admin-expenditure",
+        priority: "watch",
+      };
+    }
+
+    if (topAlert.id === "healthy-collection") {
+      return {
+        title: "Top Priority Action: Continue Collection",
+        message: "Today's collections are healthy. Keep the same momentum going.",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+        priority: "clear",
+      };
+    }
+
+    return {
+      title: "Top Priority Action",
+      message: topAlert.message || "Review the top dashboard item first.",
+      actionLabel: topAlert.actionLabel || null,
+      href: topAlert.href || null,
+      priority: topAlert.severity === "high"
+        ? "high"
+        : topAlert.severity === "medium"
+        ? "medium"
+        : "watch",
+    };
+  }, [adminSmartAlerts]);
 
   const adminRecommendations = useMemo(() => {
     const recommendations = [];
@@ -650,6 +756,8 @@ export default function AdminDashboard() {
     );
   }
 
+  const priorityBannerStyles = getPriorityBannerStyles(topPriorityAction.priority);
+
   return (
     <>
       <Header name={userName} />
@@ -666,6 +774,34 @@ export default function AdminDashboard() {
                 expenditure, outstanding dues, and reports.
               </p>
             </div>
+
+            <section className={`mb-8 rounded-2xl border p-6 shadow-md ${priorityBannerStyles.box}`}>
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="mb-2">
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${priorityBannerStyles.badge}`}>
+                      Top Priority
+                    </span>
+                  </div>
+                  <h2 className={`text-xl font-semibold tracking-tight ${priorityBannerStyles.title}`}>
+                    {topPriorityAction.title}
+                  </h2>
+                  <p className={`mt-2 text-sm ${priorityBannerStyles.text}`}>
+                    {topPriorityAction.message}
+                  </p>
+                </div>
+
+                {topPriorityAction.actionLabel && topPriorityAction.href ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push(topPriorityAction.href)}
+                    className={`inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm hover:shadow-md transition ${priorityBannerStyles.button}`}
+                  >
+                    {topPriorityAction.actionLabel}
+                  </button>
+                ) : null}
+              </div>
+            </section>
 
             <section className="mb-8 bg-white rounded-2xl shadow-md border border-gray-200 p-6">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -14,35 +14,6 @@ const WORK_TYPE_OPTIONS = [
   { value: "test_paper", label: "Test Paper" },
 ];
 
-function getTypeLabel(type) {
-  const found = WORK_TYPE_OPTIONS.find((item) => item.value === type);
-  return found?.label || "Work";
-}
-
-function getQuestionPlaceholder(type) {
-  if (type === "quiz") {
-    return "Quiz instructions or quiz topic";
-  }
-
-  if (type === "test_paper") {
-    return "Test paper instructions or paper details";
-  }
-
-  return "Question";
-}
-
-function getModelAnswerPlaceholder(type) {
-  if (type === "quiz") {
-    return "Answer key or model answer";
-  }
-
-  if (type === "test_paper") {
-    return "Model answer or marking guide";
-  }
-
-  return "Model Answer";
-}
-
 export default function TeacherCreateWorkPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
   const [teacherId, setTeacherId] = useState("");
@@ -60,13 +31,23 @@ export default function TeacherCreateWorkPage() {
   const [questionFile, setQuestionFile] = useState(null);
   const [modelFile, setModelFile] = useState(null);
 
-  const [keywords, setKeywords] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  // 🔥 NEW — multiple lesson files
+  const [lessonFiles, setLessonFiles] = useState([]);
 
+  // 🔥 NEW — test paper settings
+  const [paperMode, setPaperMode] = useState("objective");
+  const [totalMarks, setTotalMarks] = useState("");
+  const [questionCount, setQuestionCount] = useState("");
+  const [difficulty, setDifficulty] = useState("medium");
+
+  const [dueDate, setDueDate] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const typeLabel = useMemo(() => getTypeLabel(type), [type]);
+  const typeLabel = useMemo(() => {
+    const found = WORK_TYPE_OPTIONS.find((item) => item.value === type);
+    return found?.label || "Work";
+  }, [type]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -87,9 +68,7 @@ export default function TeacherCreateWorkPage() {
       setTeacherName(user?.name || "Teacher");
       setTeacherId(String(user?.id || ""));
       setIsAllowed(true);
-    } catch (error) {
-      console.log("TEACHER AUTH ERROR:", error);
-      localStorage.removeItem("erp_user");
+    } catch {
       window.location.href = "/login";
     }
   }, []);
@@ -98,82 +77,39 @@ export default function TeacherCreateWorkPage() {
     if (!isAllowed) return;
 
     const fetchSubjects = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("subjects")
         .select("subject_name")
         .eq("class_name", className);
 
-      if (error) {
-        console.log("SUBJECT FETCH ERROR:", error);
-        setSubjects([]);
-        setSubjectName("");
-        return;
-      }
-
       const list = data || [];
       setSubjects(list);
 
-      if (list.length === 0) {
-        setSubjectName("");
-        return;
+      if (list.length > 0) {
+        setSubjectName(list[0].subject_name);
       }
-
-      setSubjectName((current) => {
-        const exists = list.some((item) => item.subject_name === current);
-        return exists ? current : list[0].subject_name;
-      });
     };
 
     fetchSubjects();
   }, [className, isAllowed]);
 
   async function uploadFile(file, folder) {
-    if (!file) {
-      return { url: "", name: "" };
-    }
+    if (!file) return { url: "", name: "" };
 
     const fileName = `${Date.now()}_${file.name}`;
 
-    const { error: uploadError } = await supabase.storage
+    await supabase.storage
       .from("works-files")
       .upload(`${folder}/${fileName}`, file);
-
-    if (uploadError) {
-      console.log("UPLOAD ERROR:", uploadError);
-      return { url: "", name: "" };
-    }
 
     const { data } = supabase.storage
       .from("works-files")
       .getPublicUrl(`${folder}/${fileName}`);
 
-    return {
-      url: data?.publicUrl || "",
-      name: file.name,
-    };
-  }
-
-  function resetForm() {
-    setTitle("");
-    setQuestion("");
-    setModelAnswer("");
-    setKeywords("");
-    setDueDate("");
-    setQuestionFile(null);
-    setModelFile(null);
+    return { url: data.publicUrl, name: file.name };
   }
 
   async function handleCreateWork() {
-    if (!title.trim() || !subjectName.trim()) {
-      setMessage("Please fill all required fields.");
-      return;
-    }
-
-    if (!question.trim() && !questionFile) {
-      setMessage("Please add question text or upload a question file.");
-      return;
-    }
-
     setLoading(true);
     setMessage("");
 
@@ -181,38 +117,49 @@ export default function TeacherCreateWorkPage() {
       const questionUpload = await uploadFile(questionFile, "question");
       const modelUpload = await uploadFile(modelFile, "model");
 
+      // 🔥 upload multiple lesson files
+      let lessonUrls = [];
+      let lessonNames = [];
+
+      for (let file of lessonFiles) {
+        const res = await uploadFile(file, "lessons");
+        lessonUrls.push(res.url);
+        lessonNames.push(res.name);
+      }
+
       const payload = {
         class_name: className,
         subject_name: subjectName,
         type,
-        title: title.trim(),
-        question: question.trim(),
-        model_answer: modelAnswer.trim(),
-        keywords: keywords.trim(),
+        title,
+        question,
+        model_answer: modelAnswer,
         due_date: dueDate || null,
         teacher_name: teacherName,
         teacher_id: teacherId,
 
         question_file_url: questionUpload.url,
-        question_file_name: questionUpload.name,
-
         model_answer_file_url: modelUpload.url,
-        model_answer_file_name: modelUpload.name,
+
+        // 🔥 NEW fields
+        lesson_file_urls: lessonUrls,
+        lesson_file_names: lessonNames,
+        paper_mode: paperMode,
+        total_marks: totalMarks,
+        question_count: questionCount,
+        difficulty_level: difficulty,
       };
 
       const { error } = await supabase.from("works").insert([payload]);
 
       if (error) {
-        setMessage(`Error: ${error.message}`);
-        setLoading(false);
+        setMessage(error.message);
         return;
       }
 
-      setMessage(`✅ ${typeLabel} created successfully`);
-      resetForm();
-    } catch (error) {
-      console.log("CREATE WORK ERROR:", error);
-      setMessage("Something went wrong while creating the work.");
+      setMessage(`✅ ${typeLabel} created`);
+    } catch (err) {
+      setMessage("Error creating work");
     } finally {
       setLoading(false);
     }
@@ -228,138 +175,121 @@ export default function TeacherCreateWorkPage() {
         <Sidebar role="teacher" />
 
         <div className="flex-1 p-6">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-800">Create Work</h1>
-              <p className="mt-2 text-sm text-gray-600">
-                Create homework, classwork, quiz, or test paper for students.
-              </p>
-            </div>
+          <div className="max-w-3xl mx-auto bg-white p-6 rounded-2xl shadow">
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-              >
+            <h1 className="text-2xl font-bold mb-4">Create Work</h1>
+
+            {/* TYPE + CLASS */}
+            <div className="grid md:grid-cols-2 gap-3">
+              <select value={type} onChange={(e) => setType(e.target.value)} className="p-3 border rounded-xl">
                 {WORK_TYPE_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
+                  <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>
 
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-              >
-                {CLASS_OPTIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
+              <select value={className} onChange={(e) => setClassName(e.target.value)} className="p-3 border rounded-xl">
+                {CLASS_OPTIONS.map((c) => (
+                  <option key={c}>{c}</option>
                 ))}
               </select>
             </div>
 
-            <div className="mt-3">
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={subjectName}
-                onChange={(e) => setSubjectName(e.target.value)}
-              >
-                {subjects.length === 0 ? (
-                  <option value="">No subject found</option>
-                ) : (
-                  subjects.map((item) => (
-                    <option key={item.subject_name} value={item.subject_name}>
-                      {item.subject_name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            {/* SUBJECT */}
+            <select className="w-full mt-3 p-3 border rounded-xl" value={subjectName} onChange={(e) => setSubjectName(e.target.value)}>
+              {subjects.map((s) => (
+                <option key={s.subject_name}>{s.subject_name}</option>
+              ))}
+            </select>
 
-            <div className="mt-3">
-              <input
-                placeholder={`${typeLabel} Title`}
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
+            {/* TITLE */}
+            <input
+              className="w-full mt-3 p-3 border rounded-xl"
+              placeholder="Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
 
-            <div className="mt-3">
-              <textarea
-                placeholder={getQuestionPlaceholder(type)}
-                className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-              />
-            </div>
+            {/* 🔥 TEST PAPER EXTRA SECTION */}
+            {type === "test_paper" && (
+              <div className="mt-5 p-4 border rounded-2xl bg-blue-50">
 
-            <div className="mt-2 mb-4">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Upload Question / Lesson File
-              </label>
-              <input
-                type="file"
-                onChange={(e) => setQuestionFile(e.target.files?.[0] || null)}
-                className="w-full"
-              />
-            </div>
+                <h2 className="font-semibold mb-3">Test Paper Settings</h2>
 
-            <div className="mt-3">
-              <textarea
-                placeholder={getModelAnswerPlaceholder(type)}
-                className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3"
-                value={modelAnswer}
-                onChange={(e) => setModelAnswer(e.target.value)}
-              />
-            </div>
+                {/* multiple lesson upload */}
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => setLessonFiles(Array.from(e.target.files))}
+                  className="w-full mb-3"
+                />
 
-            <div className="mt-2 mb-4">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Upload Model Answer / Answer Key File
-              </label>
-              <input
-                type="file"
-                onChange={(e) => setModelFile(e.target.files?.[0] || null)}
-                className="w-full"
-              />
-            </div>
+                {/* mode */}
+                <select className="w-full p-2 border rounded mb-3" value={paperMode} onChange={(e) => setPaperMode(e.target.value)}>
+                  <option value="objective">Objective</option>
+                  <option value="subjective">Subjective</option>
+                  <option value="mixed">Mixed</option>
+                </select>
 
-            <div className="mt-3">
-              <input
-                placeholder="Keywords"
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-              />
-            </div>
+                {/* marks */}
+                <input
+                  placeholder="Total Marks"
+                  className="w-full p-2 border rounded mb-3"
+                  value={totalMarks}
+                  onChange={(e) => setTotalMarks(e.target.value)}
+                />
 
-            <div className="mt-3">
-              <input
-                type="date"
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
+                {/* question count */}
+                <input
+                  placeholder="Number of Questions"
+                  className="w-full p-2 border rounded mb-3"
+                  value={questionCount}
+                  onChange={(e) => setQuestionCount(e.target.value)}
+                />
 
-            <div className="mt-5">
-              <button
-                onClick={handleCreateWork}
-                disabled={loading}
-                className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-70"
-              >
-                {loading ? `Creating ${typeLabel}...` : `Create ${typeLabel}`}
-              </button>
-            </div>
+                {/* difficulty */}
+                <select className="w-full p-2 border rounded" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
 
-            {message ? (
-              <p className="mt-4 text-sm font-medium text-gray-700">{message}</p>
-            ) : null}
+              </div>
+            )}
+
+            {/* QUESTION */}
+            <textarea
+              className="w-full mt-3 p-3 border rounded-xl"
+              placeholder="Question / Instructions"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
+
+            {/* QUESTION FILE */}
+            <input type="file" className="mt-2" onChange={(e) => setQuestionFile(e.target.files[0])} />
+
+            {/* MODEL */}
+            <textarea
+              className="w-full mt-3 p-3 border rounded-xl"
+              placeholder="Model Answer"
+              value={modelAnswer}
+              onChange={(e) => setModelAnswer(e.target.value)}
+            />
+
+            <input type="file" className="mt-2" onChange={(e) => setModelFile(e.target.files[0])} />
+
+            {/* DATE */}
+            <input type="date" className="w-full mt-3 p-3 border rounded-xl" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+
+            {/* BUTTON */}
+            <button
+              onClick={handleCreateWork}
+              disabled={loading}
+              className="mt-5 bg-blue-600 text-white px-6 py-3 rounded-xl"
+            >
+              {loading ? "Creating..." : `Create ${typeLabel}`}
+            </button>
+
+            {message && <p className="mt-3">{message}</p>}
           </div>
         </div>
       </div>

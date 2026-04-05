@@ -1,11 +1,32 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
+import { supabase } from "@/lib/supabase";
 
-const CLASS_OPTIONS = ["3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
+const CLASS_OPTIONS = [
+  "3rd",
+  "4th",
+  "5th",
+  "6th",
+  "7th",
+  "8th",
+  "9th",
+  "10th",
+];
+
+const SUBJECT_OPTIONS = [
+  "English",
+  "Hindi",
+  "Marathi",
+  "Maths",
+  "Science",
+  "G. Science",
+  "History",
+  "Geography",
+  "Computer",
+];
 
 const WORK_TYPE_OPTIONS = [
   { value: "homework", label: "Homework" },
@@ -14,57 +35,73 @@ const WORK_TYPE_OPTIONS = [
   { value: "test_paper", label: "Test Paper" },
 ];
 
-function getTypeLabel(type) {
-  const found = WORK_TYPE_OPTIONS.find((item) => item.value === type);
-  return found?.label || "Work";
+const PAPER_MODE_OPTIONS = [
+  { value: "mixed", label: "Mixed" },
+  { value: "objective", label: "Objective" },
+  { value: "subjective", label: "Subjective" },
+];
+
+const DIFFICULTY_OPTIONS = [
+  { value: "easy", label: "Easy" },
+  { value: "medium", label: "Medium" },
+  { value: "hard", label: "Hard" },
+];
+
+// Change these only if your project uses different bucket names
+const QUESTION_BUCKET = "work-files";
+const ANSWER_BUCKET = "work-files";
+const LESSON_BUCKET = "work-files";
+
+function formatDateForInput(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function getQuestionPlaceholder(type) {
-  if (type === "quiz") return "Quiz instructions or quiz topic";
-  if (type === "test_paper") return "Test paper instructions or paper details";
-  return "Question";
-}
-
-function getModelAnswerPlaceholder(type) {
-  if (type === "quiz") return "Answer key or model answer";
-  if (type === "test_paper") return "Model answer or marking guide";
-  return "Model Answer";
+function safeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export default function TeacherCreateWorkPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
-  const [teacherId, setTeacherId] = useState("");
+  const [teacherId, setTeacherId] = useState(null);
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const [type, setType] = useState("homework");
-  const [className, setClassName] = useState("3rd");
-  const [subjectName, setSubjectName] = useState("");
-  const [subjects, setSubjects] = useState([]);
-
+  const [workType, setWorkType] = useState("homework");
+  const [selectedClass, setSelectedClass] = useState("10th");
+  const [subject, setSubject] = useState("English");
   const [title, setTitle] = useState("");
-  const [question, setQuestion] = useState("");
-  const [modelAnswer, setModelAnswer] = useState("");
+  const [questionText, setQuestionText] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [dueDate, setDueDate] = useState(formatDateForInput(new Date()));
 
-  const [questionFile, setQuestionFile] = useState(null);
-  const [modelFile, setModelFile] = useState(null);
-
-  const [lessonFiles, setLessonFiles] = useState([]);
-  const [paperMode, setPaperMode] = useState("objective");
-  const [totalMarks, setTotalMarks] = useState("");
-  const [questionCount, setQuestionCount] = useState("");
+  const [paperMode, setPaperMode] = useState("mixed");
   const [difficulty, setDifficulty] = useState("medium");
+  const [totalMarks, setTotalMarks] = useState(20);
+  const [questionCount, setQuestionCount] = useState(10);
 
+  // Typed instructions / pattern textarea for test paper
+  const [testPaperPattern, setTestPaperPattern] = useState("");
+
+  // Lesson files (multiple) used by test paper generator
+  const [lessonFiles, setLessonFiles] = useState([]);
+
+  // Manual upload fields - must remain
+  const [questionFile, setQuestionFile] = useState(null);
+  const [modelAnswerFile, setModelAnswerFile] = useState(null);
+
+  // Generated preview
   const [generatedPaper, setGeneratedPaper] = useState("");
   const [generatedAnswerKey, setGeneratedAnswerKey] = useState("");
-  const [generating, setGenerating] = useState(false);
 
-  const [keywords, setKeywords] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const typeLabel = useMemo(() => getTypeLabel(type), [type]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -82,537 +119,646 @@ export default function TeacherCreateWorkPage() {
         return;
       }
 
-      setTeacherName(user?.name || "Teacher");
-      setTeacherId(String(user?.id || ""));
+      setTeacherName(user.name || "Teacher");
+      setTeacherId(user.id || user.teacher_id || user.email || null);
       setIsAllowed(true);
-    } catch (error) {
-      console.log("TEACHER AUTH ERROR:", error);
+    } catch (err) {
+      console.error("USER PARSE ERROR:", err);
       localStorage.removeItem("erp_user");
       window.location.href = "/login";
     }
   }, []);
 
-  useEffect(() => {
-    if (!isAllowed) return;
+  const pageTitle = useMemo(() => {
+    const selected = WORK_TYPE_OPTIONS.find((item) => item.value === workType);
+    return selected ? `Create ${selected.label}` : "Create Work";
+  }, [workType]);
 
-    const fetchSubjects = async () => {
-      const { data, error } = await supabase
-        .from("subjects")
-        .select("subject_name")
-        .eq("class_name", className);
+  async function uploadFileToBucket(file, bucketName, folderName = "teacher-work") {
+    if (!file) return { url: "", path: "", name: "" };
 
-      if (error) {
-        console.log("SUBJECT FETCH ERROR:", error);
-        setSubjects([]);
-        setSubjectName("");
-        return;
-      }
+    const cleanFileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}-${file.name.replace(/\s+/g, "-")}`;
 
-      const list = data || [];
-      setSubjects(list);
-
-      if (list.length === 0) {
-        setSubjectName("");
-        return;
-      }
-
-      setSubjectName((current) => {
-        const exists = list.some((item) => item.subject_name === current);
-        return exists ? current : list[0].subject_name;
-      });
-    };
-
-    fetchSubjects();
-  }, [className, isAllowed]);
-
-  async function uploadFile(file, folder) {
-    if (!file) {
-      return { url: "", name: "" };
-    }
-
-    const fileName = `${Date.now()}_${file.name}`;
+    const filePath = `${folderName}/${cleanFileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("works-files")
-      .upload(`${folder}/${fileName}`, file);
+      .from(bucketName)
+      .upload(filePath, file, {
+        upsert: true,
+      });
 
     if (uploadError) {
-      console.log("UPLOAD ERROR:", uploadError);
-      return { url: "", name: "" };
+      throw uploadError;
     }
 
-    const { data } = supabase.storage
-      .from("works-files")
-      .getPublicUrl(`${folder}/${fileName}`);
+    const { data: publicData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(filePath);
 
     return {
-      url: data?.publicUrl || "",
-      name: file.name,
+      url: publicData?.publicUrl || "",
+      path: filePath,
+      name: file.name || "",
     };
   }
 
-  function resetForm() {
-    setTitle("");
-    setQuestion("");
-    setModelAnswer("");
-    setKeywords("");
-    setDueDate("");
-    setQuestionFile(null);
-    setModelFile(null);
-    setLessonFiles([]);
-    setPaperMode("objective");
-    setTotalMarks("");
-    setQuestionCount("");
-    setDifficulty("medium");
-    setGeneratedPaper("");
-    setGeneratedAnswerKey("");
-  }
+  async function uploadMultipleLessonFiles(files) {
+    const uploaded = [];
 
-  function handleLessonFilesChange(e) {
-    const newFiles = Array.from(e.target.files || []);
-
-    setLessonFiles((prev) => {
-      const merged = [...prev, ...newFiles];
-
-      const uniqueFiles = merged.filter((file, index, self) => {
-        return (
-          index ===
-          self.findIndex(
-            (f) =>
-              f.name === file.name &&
-              f.size === file.size &&
-              f.lastModified === file.lastModified
-          )
-        );
+    for (const file of files) {
+      const result = await uploadFileToBucket(file, LESSON_BUCKET, "lesson-files");
+      uploaded.push({
+        name: file.name,
+        url: result.url,
+        path: result.path,
       });
+    }
 
-      return uniqueFiles;
-    });
-
-    e.target.value = "";
+    return uploaded;
   }
 
-  function handleRemoveLessonFile(indexToRemove) {
-    setLessonFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+  function resetStatus() {
+    setMessage("");
+    setError("");
+  }
+
+  function handleLessonFilesChange(event) {
+    const files = Array.from(event.target.files || []);
+    setLessonFiles(files);
   }
 
   async function handleGenerateTestPaper() {
-    if (type !== "test_paper") {
-      setMessage("Generation is available only for test paper.");
-      return;
-    }
+    resetStatus();
 
     if (lessonFiles.length === 0) {
-      setMessage("Please upload lesson files first.");
-      return;
-    }
-
-    if (!totalMarks || !questionCount) {
-      setMessage("Please fill total marks and number of questions first.");
+      setError("Please upload lesson files first.");
       return;
     }
 
     setGenerating(true);
-    setMessage("");
 
     try {
-      const lessonTexts = lessonFiles.map((file) => file.name);
+      const formData = new FormData();
+
+      lessonFiles.forEach((file) => {
+        formData.append("lesson_files", file);
+      });
+
+      // IMPORTANT FIX:
+      // We are now sending typed instructions/pattern together with lesson files
+      formData.append("test_paper_pattern", testPaperPattern || "");
+      formData.append("instructions", testPaperPattern || "");
+      formData.append("pattern", testPaperPattern || "");
+
+      formData.append("class_name", selectedClass);
+      formData.append("subject", subject);
+      formData.append("title", title || "");
+      formData.append("difficulty", difficulty);
+      formData.append("paper_mode", paperMode);
+      formData.append("total_marks", String(totalMarks));
+      formData.append("question_count", String(questionCount));
+      formData.append("keywords", keywords || "");
 
       const response = await fetch("/api/generate-test-paper", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paperMode,
-          totalMarks,
-          questionCount,
-          difficulty,
-          lessonTexts,
-        }),
+        body: formData,
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setMessage(data?.error || "Failed to generate test paper.");
-        return;
+        throw new Error(data?.error || "Failed to generate test paper.");
       }
 
-      setGeneratedPaper(data?.paper || "");
-      setGeneratedAnswerKey(data?.answerKey || "");
-      setMessage("✅ Test paper generated. Review before saving.");
-    } catch (error) {
-      console.log("GENERATE TEST PAPER ERROR:", error);
-      setMessage("Failed to generate test paper.");
+      const paperText =
+        data?.generatedPaper ||
+        data?.paper ||
+        data?.questionPaper ||
+        data?.testPaper ||
+        "";
+
+      const answerKeyText =
+        data?.generatedAnswerKey ||
+        data?.answerKey ||
+        data?.modelAnswer ||
+        data?.markingGuide ||
+        "";
+
+      setGeneratedPaper(paperText);
+      setGeneratedAnswerKey(answerKeyText);
+
+      if (paperText && !questionText) {
+        setQuestionText(paperText);
+      }
+
+      setMessage("Test paper generated successfully.");
+    } catch (err) {
+      console.error("GENERATE TEST PAPER ERROR:", err);
+      setError(err.message || "Failed to generate test paper.");
     } finally {
       setGenerating(false);
     }
   }
 
-  async function handleCreateWork() {
-    if (!title.trim() || !subjectName.trim()) {
-      setMessage("Please fill all required fields.");
+  async function handleSaveWork(event) {
+    event.preventDefault();
+    resetStatus();
+
+    if (!selectedClass || !subject || !title) {
+      setError("Please fill title, class, and subject.");
       return;
     }
 
-    if (!question.trim() && !questionFile && type !== "test_paper") {
-      setMessage("Please add question text or upload a question file.");
+    if (workType !== "test_paper" && !questionText && !questionFile) {
+      setError("Please enter question or upload question file.");
       return;
     }
 
-    if (
-      type === "test_paper" &&
-      lessonFiles.length === 0 &&
-      !question.trim() &&
-      !questionFile &&
-      !generatedPaper.trim()
-    ) {
-      setMessage("Please upload lesson files or generate/add test paper content.");
+    if (workType === "test_paper" && !generatedPaper && !questionText && !questionFile) {
+      setError("Please generate test paper or upload question file first.");
       return;
     }
 
-    setLoading(true);
-    setMessage("");
+    setSaving(true);
 
     try {
-      const questionUpload = await uploadFile(questionFile, "question");
-      const modelUpload = await uploadFile(modelFile, "model");
+      const uploadedQuestion = questionFile
+        ? await uploadFileToBucket(questionFile, QUESTION_BUCKET, "question-files")
+        : { url: "", path: "", name: "" };
 
-      const lessonUrls = [];
-      const lessonNames = [];
+      const uploadedModelAnswer = modelAnswerFile
+        ? await uploadFileToBucket(modelAnswerFile, ANSWER_BUCKET, "model-answer-files")
+        : { url: "", path: "", name: "" };
 
-      for (const file of lessonFiles) {
-        const uploaded = await uploadFile(file, "lessons");
-        lessonUrls.push(uploaded.url);
-        lessonNames.push(uploaded.name);
-      }
+      const uploadedLessonFiles = lessonFiles.length
+        ? await uploadMultipleLessonFiles(lessonFiles)
+        : [];
 
-      const finalQuestion =
-        type === "test_paper" && generatedPaper.trim()
-          ? generatedPaper.trim()
-          : question.trim();
+      const finalQuestionText =
+        workType === "test_paper"
+          ? generatedPaper || questionText || ""
+          : questionText || "";
 
-      const finalModelAnswer =
-        type === "test_paper" && generatedAnswerKey.trim()
-          ? generatedAnswerKey.trim()
-          : modelAnswer.trim();
+      const finalAnswerKeyText =
+        workType === "test_paper" ? generatedAnswerKey || "" : "";
 
-      const payload = {
-        class_name: className,
-        subject_name: subjectName,
-        type,
+      const insertPayload = {
         title: title.trim(),
-        question: finalQuestion,
-        model_answer: finalModelAnswer,
-        keywords: keywords.trim(),
+        class_name: selectedClass,
+        subject: subject,
+        type: workType,
+        question: finalQuestionText,
+        question_text: finalQuestionText,
+        keywords: keywords || "",
         due_date: dueDate || null,
-        teacher_name: teacherName,
-        teacher_id: teacherId,
+        teacher_name: teacherName || "Teacher",
+        teacher_id: teacherId || null,
 
-        question_file_url: questionUpload.url,
-        question_file_name: questionUpload.name,
+        question_file_url: uploadedQuestion.url || "",
+        question_file_name: uploadedQuestion.name || "",
+        model_answer_file_url: uploadedModelAnswer.url || "",
+        model_answer_file_name: uploadedModelAnswer.name || "",
 
-        model_answer_file_url: modelUpload.url,
-        model_answer_file_name: modelUpload.name,
+        // test paper extra fields
+        paper_mode: workType === "test_paper" ? paperMode : null,
+        difficulty: workType === "test_paper" ? difficulty : null,
+        total_marks: workType === "test_paper" ? safeNumber(totalMarks, 0) : null,
+        question_count: workType === "test_paper" ? safeNumber(questionCount, 0) : null,
+        test_paper_pattern: workType === "test_paper" ? testPaperPattern || "" : "",
+        generated_paper: workType === "test_paper" ? generatedPaper || "" : "",
+        generated_answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
+        answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
 
-        lesson_file_urls: lessonUrls,
-        lesson_file_names: lessonNames,
-        paper_mode: type === "test_paper" ? paperMode : null,
-        total_marks: type === "test_paper" ? totalMarks || null : null,
-        question_count: type === "test_paper" ? questionCount || null : null,
-        difficulty_level: type === "test_paper" ? difficulty : null,
-
-        ai_generated: type === "test_paper" ? Boolean(generatedPaper.trim()) : false,
-        generated_paper_text:
-          type === "test_paper" ? generatedPaper.trim() || null : null,
-        generated_answer_key:
-          type === "test_paper" ? generatedAnswerKey.trim() || null : null,
+        lesson_files: uploadedLessonFiles,
+        created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from("works").insert([payload]);
+      const { error: insertError } = await supabase.from("works").insert([insertPayload]);
 
-      if (error) {
-        setMessage(`Error: ${error.message}`);
-        setLoading(false);
-        return;
+      if (insertError) {
+        throw insertError;
       }
 
-      setMessage(`✅ ${typeLabel} created successfully`);
-      resetForm();
-    } catch (error) {
-      console.log("CREATE WORK ERROR:", error);
-      setMessage("Something went wrong while creating the work.");
+      setMessage(
+        workType === "test_paper"
+          ? "Test paper created successfully."
+          : "Work created successfully."
+      );
+
+      // safe reset
+      setTitle("");
+      setQuestionText("");
+      setKeywords("");
+      setQuestionFile(null);
+      setModelAnswerFile(null);
+      setLessonFiles([]);
+      setGeneratedPaper("");
+      setGeneratedAnswerKey("");
+      setTestPaperPattern("");
+
+      const questionInput = document.getElementById("question-file-input");
+      const modelAnswerInput = document.getElementById("model-answer-file-input");
+      const lessonFilesInput = document.getElementById("lesson-files-input");
+
+      if (questionInput) questionInput.value = "";
+      if (modelAnswerInput) modelAnswerInput.value = "";
+      if (lessonFilesInput) lessonFilesInput.value = "";
+    } catch (err) {
+      console.error("SAVE WORK ERROR:", err);
+      setError(err.message || "Failed to save work.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
-  if (!isAllowed) return null;
+  if (!isAllowed) {
+    return null;
+  }
 
   return (
-    <>
-      <Header name={teacherName} />
+    <div className="min-h-screen bg-[#f6f8fc]">
+      <Header />
+      <div className="flex">
+        <Sidebar />
 
-      <div className="flex min-h-screen bg-gray-100">
-        <Sidebar role="teacher" />
+        <main className="flex-1 p-4 md:p-6">
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
+              <div className="mb-6">
+                <p className="text-sm text-gray-500">Create Work</p>
+                <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Create homework, classwork, quiz, or test paper for students.
+                </p>
+              </div>
 
-        <div className="flex-1 p-6">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-white p-6 shadow-md border border-gray-200">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-800">Create Work</h1>
-              <p className="mt-2 text-sm text-gray-600">
-                Create homework, classwork, quiz, or test paper for students.
-              </p>
-            </div>
+              {message ? (
+                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+                  {message}
+                </div>
+              ) : null}
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-              >
-                {WORK_TYPE_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+              {error ? (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                  {error}
+                </div>
+              ) : null}
 
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-              >
-                {CLASS_OPTIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <form onSubmit={handleSaveWork} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Work Type
+                    </label>
+                    <select
+                      value={workType}
+                      onChange={(e) => setWorkType(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                    >
+                      {WORK_TYPE_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            <div className="mt-3">
-              <select
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={subjectName}
-                onChange={(e) => setSubjectName(e.target.value)}
-              >
-                {subjects.length === 0 ? (
-                  <option value="">No subject found</option>
-                ) : (
-                  subjects.map((item) => (
-                    <option key={item.subject_name} value={item.subject_name}>
-                      {item.subject_name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Class
+                    </label>
+                    <select
+                      value={selectedClass}
+                      onChange={(e) => setSelectedClass(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                    >
+                      {CLASS_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            <div className="mt-3">
-              <input
-                placeholder={`${typeLabel} Title`}
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Subject
+                    </label>
+                    <select
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                    >
+                      {SUBJECT_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-            {type === "test_paper" ? (
-              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                <h2 className="mb-3 text-base font-semibold text-gray-800">
-                  Test Paper Settings
-                </h2>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
 
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Upload Lesson Files (Multiple)
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    {workType === "test_paper" ? "Test Paper Title" : "Title"}
                   </label>
-
                   <input
-                    type="file"
-                    multiple
-                    onChange={handleLessonFilesChange}
-                    className="w-full"
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder={
+                      workType === "test_paper"
+                        ? "Enter test paper title"
+                        : "Enter work title"
+                    }
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
                   />
+                </div>
 
-                  {lessonFiles.length > 0 ? (
-                    <div className="mt-3 space-y-2">
-                      {lessonFiles.map((file, index) => (
-                        <div
-                          key={`${file.name}-${file.lastModified}-${index}`}
-                          className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2"
+                {workType === "test_paper" ? (
+                  <>
+                    <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
+                      <h2 className="text-lg font-bold text-gray-800 mb-4">
+                        Test Paper Settings
+                      </h2>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Paper Mode
+                          </label>
+                          <select
+                            value={paperMode}
+                            onChange={(e) => setPaperMode(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          >
+                            {PAPER_MODE_OPTIONS.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Difficulty
+                          </label>
+                          <select
+                            value={difficulty}
+                            onChange={(e) => setDifficulty(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          >
+                            {DIFFICULTY_OPTIONS.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Total Marks
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={totalMarks}
+                            onChange={(e) => setTotalMarks(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Question Count
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={questionCount}
+                            onChange={(e) => setQuestionCount(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Upload Lesson Files (Multiple)
+                        </label>
+                        <input
+                          id="lesson-files-input"
+                          type="file"
+                          multiple
+                          onChange={handleLessonFilesChange}
+                          className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                        />
+                        {lessonFiles.length > 0 ? (
+                          <div className="mt-2 text-sm text-gray-600">
+                            {lessonFiles.length} lesson file(s) selected:
+                            <ul className="mt-1 list-disc pl-5">
+                              {lessonFiles.map((file, index) => (
+                                <li key={`${file.name}-${index}`}>{file.name}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Test Paper Pattern / Instructions
+                        </label>
+                        <textarea
+                          rows={8}
+                          value={testPaperPattern}
+                          onChange={(e) => setTestPaperPattern(e.target.value)}
+                          placeholder={`Example:
+Choose the correct options and rewrite the sentences. 4 marks 4 questions
+Are the sentences Right or Wrong? 3 marks 3 questions
+Answer the following questions in one sentence each. 2 marks 2 questions
+Give geographical reasons (Any 1) from given 2 questions. 3 marks
+Answer in detail (Any 2) from given 3 questions. 8 marks`}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                        />
+                        <p className="mt-2 text-xs text-gray-500">
+                          This typed pattern will now be sent together with uploaded lesson files
+                          while generating the test paper.
+                        </p>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={handleGenerateTestPaper}
+                          disabled={generating}
+                          className="rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
                         >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-800">
-                              {file.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {(file.size / 1024).toFixed(1)} KB
-                            </p>
+                          {generating ? "Generating..." : "Generate Test Paper"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {(generatedPaper || generatedAnswerKey) && (
+                      <div className="rounded-2xl border border-gray-200 p-4 bg-white">
+                        <h2 className="text-lg font-bold text-gray-800 mb-4">
+                          Generated Preview
+                        </h2>
+
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Generated Test Paper
+                            </label>
+                            <textarea
+                              rows={14}
+                              value={generatedPaper}
+                              onChange={(e) => setGeneratedPaper(e.target.value)}
+                              className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                            />
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLessonFile(index)}
-                            className="ml-3 rounded-lg bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                          >
-                            Remove
-                          </button>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              Generated Answer Key / Marking Guide
+                            </label>
+                            <textarea
+                              rows={12}
+                              value={generatedAnswerKey}
+                              onChange={(e) => setGeneratedAnswerKey(e.target.value)}
+                              className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                            />
+                          </div>
                         </div>
-                      ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Question / Instructions
+                    </label>
+                    <textarea
+                      rows={8}
+                      value={questionText}
+                      onChange={(e) => setQuestionText(e.target.value)}
+                      placeholder="Enter homework, classwork, or quiz question here..."
+                      className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
+                  <h2 className="text-lg font-bold text-gray-800 mb-4">Manual Upload Fields</h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Upload Question / Lesson File
+                      </label>
+                      <input
+                        id="question-file-input"
+                        type="file"
+                        onChange={(e) => setQuestionFile(e.target.files?.[0] || null)}
+                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                      {questionFile ? (
+                        <p className="mt-2 text-sm text-gray-600">{questionFile.name}</p>
+                      ) : null}
                     </div>
-                  ) : null}
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Upload Model Answer / Answer Key File
+                      </label>
+                      <input
+                        id="model-answer-file-input"
+                        type="file"
+                        onChange={(e) => setModelAnswerFile(e.target.files?.[0] || null)}
+                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                      {modelAnswerFile ? (
+                        <p className="mt-2 text-sm text-gray-600">{modelAnswerFile.name}</p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <select
-                    className="w-full rounded-xl border border-gray-300 p-3"
-                    value={paperMode}
-                    onChange={(e) => setPaperMode(e.target.value)}
-                  >
-                    <option value="objective">Objective</option>
-                    <option value="subjective">Subjective</option>
-                    <option value="mixed">Mixed</option>
-                  </select>
-
-                  <select
-                    className="w-full rounded-xl border border-gray-300 p-3"
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value)}
-                  >
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Keywords
+                  </label>
                   <input
-                    placeholder="Total Marks"
-                    className="w-full rounded-xl border border-gray-300 p-3"
-                    value={totalMarks}
-                    onChange={(e) => setTotalMarks(e.target.value)}
-                  />
-
-                  <input
-                    placeholder="Number of Questions"
-                    className="w-full rounded-xl border border-gray-300 p-3"
-                    value={questionCount}
-                    onChange={(e) => setQuestionCount(e.target.value)}
+                    type="text"
+                    value={keywords}
+                    onChange={(e) => setKeywords(e.target.value)}
+                    placeholder="Optional keywords"
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
                   />
                 </div>
 
-                <div className="mt-4">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-xl bg-green-600 px-5 py-2.5 text-white font-semibold hover:bg-green-700 disabled:opacity-60"
+                  >
+                    {saving
+                      ? "Saving..."
+                      : workType === "test_paper"
+                      ? "Create Test Paper"
+                      : "Create Work"}
+                  </button>
+
                   <button
                     type="button"
-                    onClick={handleGenerateTestPaper}
-                    disabled={generating}
-                    className="w-full rounded-xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:opacity-70"
+                    onClick={() => {
+                      setTitle("");
+                      setQuestionText("");
+                      setKeywords("");
+                      setGeneratedPaper("");
+                      setGeneratedAnswerKey("");
+                      setTestPaperPattern("");
+                      setQuestionFile(null);
+                      setModelAnswerFile(null);
+                      setLessonFiles([]);
+                      setMessage("");
+                      setError("");
+
+                      const questionInput = document.getElementById("question-file-input");
+                      const modelAnswerInput = document.getElementById("model-answer-file-input");
+                      const lessonFilesInput = document.getElementById("lesson-files-input");
+
+                      if (questionInput) questionInput.value = "";
+                      if (modelAnswerInput) modelAnswerInput.value = "";
+                      if (lessonFilesInput) lessonFilesInput.value = "";
+                    }}
+                    className="rounded-xl bg-gray-200 px-5 py-2.5 text-gray-800 font-semibold hover:bg-gray-300"
                   >
-                    {generating ? "Generating..." : "Generate Test Paper"}
+                    Reset
                   </button>
                 </div>
-
-                {generatedPaper ? (
-                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
-                    <h3 className="mb-2 font-semibold text-gray-800">
-                      Generated Question Paper
-                    </h3>
-                    <pre className="whitespace-pre-wrap text-sm text-gray-700">
-                      {generatedPaper}
-                    </pre>
-                  </div>
-                ) : null}
-
-                {generatedAnswerKey ? (
-                  <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
-                    <h3 className="mb-2 font-semibold text-gray-800">
-                      Generated Answer Key
-                    </h3>
-                    <pre className="whitespace-pre-wrap text-sm text-gray-700">
-                      {generatedAnswerKey}
-                    </pre>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="mt-3">
-              <textarea
-                placeholder={getQuestionPlaceholder(type)}
-                className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-              />
+              </form>
             </div>
-
-            <div className="mt-2 mb-4">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Upload Question / Lesson File
-              </label>
-              <input
-                type="file"
-                onChange={(e) => setQuestionFile(e.target.files?.[0] || null)}
-                className="w-full"
-              />
-            </div>
-
-            <div className="mt-3">
-              <textarea
-                placeholder={getModelAnswerPlaceholder(type)}
-                className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3"
-                value={modelAnswer}
-                onChange={(e) => setModelAnswer(e.target.value)}
-              />
-            </div>
-
-            <div className="mt-2 mb-4">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Upload Model Answer / Answer Key File
-              </label>
-              <input
-                type="file"
-                onChange={(e) => setModelFile(e.target.files?.[0] || null)}
-                className="w-full"
-              />
-            </div>
-
-            <div className="mt-3">
-              <input
-                placeholder="Keywords"
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-              />
-            </div>
-
-            <div className="mt-3">
-              <input
-                type="date"
-                className="w-full rounded-xl border border-gray-300 p-3"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </div>
-
-            <div className="mt-5">
-              <button
-                onClick={handleCreateWork}
-                disabled={loading}
-                className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-70"
-              >
-                {loading ? `Creating ${typeLabel}...` : `Create ${typeLabel}`}
-              </button>
-            </div>
-
-            {message ? (
-              <p className="mt-4 text-sm font-medium text-gray-700">{message}</p>
-            ) : null}
           </div>
-        </div>
+        </main>
       </div>
-    </>
+    </div>
   );
 }

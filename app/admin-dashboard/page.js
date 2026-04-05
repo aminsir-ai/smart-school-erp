@@ -67,6 +67,30 @@ function getSeverityLabel(severity) {
   return "Normal";
 }
 
+function getRiskCardStyles(tone) {
+  if (tone === "high") {
+    return {
+      box: "bg-red-50 border-red-200",
+      label: "text-red-700",
+      value: "text-red-800",
+    };
+  }
+
+  if (tone === "medium") {
+    return {
+      box: "bg-yellow-50 border-yellow-200",
+      label: "text-yellow-700",
+      value: "text-yellow-800",
+    };
+  }
+
+  return {
+    box: "bg-green-50 border-green-200",
+    label: "text-green-700",
+    value: "text-green-800",
+  };
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
@@ -295,6 +319,128 @@ export default function AdminDashboard() {
     return alerts;
   }, [todayFees, todayExpense, netToday]);
 
+  const feesRisk = useMemo(() => {
+    if (todayFees === 0) {
+      return {
+        label: "Watch",
+        tone: "medium",
+        note: "No fee collection recorded today",
+      };
+    }
+
+    return {
+      label: "Healthy",
+      tone: "low",
+      note: `${formatCurrency(todayFees)} collected today`,
+    };
+  }, [todayFees]);
+
+  const expenseRisk = useMemo(() => {
+    if (todayExpense === 0) {
+      return {
+        label: "Normal",
+        tone: "low",
+        note: "No expenditure recorded today",
+      };
+    }
+
+    if (todayExpense > todayFees && todayFees > 0) {
+      return {
+        label: "High",
+        tone: "high",
+        note: `Expenses ${formatCurrency(todayExpense)} are above fees`,
+      };
+    }
+
+    return {
+      label: "Tracked",
+      tone: "low",
+      note: `${formatCurrency(todayExpense)} recorded today`,
+    };
+  }, [todayExpense, todayFees]);
+
+  const netRisk = useMemo(() => {
+    if (netToday < 0) {
+      return {
+        label: "High",
+        tone: "high",
+        note: `Net is negative by ${formatCurrency(Math.abs(netToday))}`,
+      };
+    }
+
+    if (netToday === 0) {
+      return {
+        label: "Balanced",
+        tone: "low",
+        note: "Fees and expenses are equal today",
+      };
+    }
+
+    return {
+      label: "Good",
+      tone: "low",
+      note: `Positive net of ${formatCurrency(netToday)}`,
+    };
+  }, [netToday]);
+
+  const overallRisk = useMemo(() => {
+    const hasHigh = [feesRisk, expenseRisk, netRisk].some(
+      (item) => item.tone === "high"
+    );
+    const hasMedium = [feesRisk, expenseRisk, netRisk].some(
+      (item) => item.tone === "medium"
+    );
+
+    if (hasHigh) {
+      return {
+        label: "High Risk",
+        tone: "high",
+        note: "Immediate financial attention needed",
+      };
+    }
+
+    if (hasMedium) {
+      return {
+        label: "Watch",
+        tone: "medium",
+        note: "Some financial activity needs follow-up",
+      };
+    }
+
+    return {
+      label: "Stable",
+      tone: "low",
+      note: "Today's admin finances look under control",
+    };
+  }, [feesRisk, expenseRisk, netRisk]);
+
+  const riskCards = [
+    {
+      title: "Overall Status",
+      value: overallRisk.label,
+      tone: overallRisk.tone,
+      note: overallRisk.note,
+    },
+    {
+      title: "Fees Risk",
+      value: feesRisk.label,
+      tone: feesRisk.tone,
+      note: feesRisk.note,
+    },
+    {
+      title: "Expense Risk",
+      value: expenseRisk.label,
+      tone: expenseRisk.tone,
+      note: expenseRisk.note,
+    },
+    {
+      title: "Net Risk",
+      value: netRisk.label,
+      tone: netRisk.tone,
+      note: netRisk.note,
+    },
+  ];
+
   const chartData = useMemo(() => {
     return [
       {
@@ -362,6 +508,46 @@ export default function AdminDashboard() {
                 expenditure, outstanding dues, and reports.
               </p>
             </div>
+
+            <section className="mb-6 rounded-2xl bg-white p-5 shadow-md border border-gray-200">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Admin Risk Status
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Fast health view of today&apos;s admin financial activity.
+                  </p>
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Date: <span className="font-semibold text-gray-800">{today}</span>
+                </div>
+              </div>
+
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+                {riskCards.map((card, index) => {
+                  const styles = getRiskCardStyles(card.tone);
+
+                  return (
+                    <div
+                      key={index}
+                      className={`rounded-xl border p-4 ${styles.box}`}
+                    >
+                      <p className={`text-sm font-medium mb-2 ${styles.label}`}>
+                        {card.title}
+                      </p>
+                      <h3 className={`text-2xl font-bold ${styles.value}`}>
+                        {card.value}
+                      </h3>
+                      <p className={`text-sm mt-2 ${styles.label}`}>
+                        {card.note}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
             <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl bg-white p-5 shadow-md border border-blue-100">

@@ -47,7 +47,7 @@ const DIFFICULTY_OPTIONS = [
   { value: "hard", label: "Hard" },
 ];
 
-// Change these only if your project uses different bucket names
+// change bucket names only if your project uses different ones
 const QUESTION_BUCKET = "work-files";
 const ANSWER_BUCKET = "work-files";
 const LESSON_BUCKET = "work-files";
@@ -83,17 +83,12 @@ export default function TeacherCreateWorkPage() {
   const [totalMarks, setTotalMarks] = useState(20);
   const [questionCount, setQuestionCount] = useState(10);
 
-  // Typed instructions / pattern textarea for test paper
   const [testPaperPattern, setTestPaperPattern] = useState("");
 
-  // Lesson files (multiple) used by test paper generator
   const [lessonFiles, setLessonFiles] = useState([]);
-
-  // Manual upload fields - must remain
   const [questionFile, setQuestionFile] = useState(null);
   const [modelAnswerFile, setModelAnswerFile] = useState(null);
 
-  // Generated preview
   const [generatedPaper, setGeneratedPaper] = useState("");
   const [generatedAnswerKey, setGeneratedAnswerKey] = useState("");
 
@@ -133,6 +128,11 @@ export default function TeacherCreateWorkPage() {
     const selected = WORK_TYPE_OPTIONS.find((item) => item.value === workType);
     return selected ? `Create ${selected.label}` : "Create Work";
   }, [workType]);
+
+  function resetStatus() {
+    setMessage("");
+    setError("");
+  }
 
   async function uploadFileToBucket(file, bucketName, folderName = "teacher-work") {
     if (!file) return { url: "", path: "", name: "" };
@@ -179,14 +179,33 @@ export default function TeacherCreateWorkPage() {
     return uploaded;
   }
 
-  function resetStatus() {
-    setMessage("");
-    setError("");
+  function handleLessonFilesChange(event) {
+    const newFiles = Array.from(event.target.files || []);
+
+    setLessonFiles((prev) => {
+      const existing = [...prev];
+
+      newFiles.forEach((newFile) => {
+        const alreadyExists = existing.some(
+          (oldFile) =>
+            oldFile.name === newFile.name &&
+            oldFile.size === newFile.size &&
+            oldFile.lastModified === newFile.lastModified
+        );
+
+        if (!alreadyExists) {
+          existing.push(newFile);
+        }
+      });
+
+      return existing;
+    });
+
+    event.target.value = "";
   }
 
-  function handleLessonFilesChange(event) {
-    const files = Array.from(event.target.files || []);
-    setLessonFiles(files);
+  function handleRemoveLessonFile(indexToRemove) {
+    setLessonFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
   }
 
   async function handleGenerateTestPaper() {
@@ -206,8 +225,6 @@ export default function TeacherCreateWorkPage() {
         formData.append("lesson_files", file);
       });
 
-      // IMPORTANT FIX:
-      // We are now sending typed instructions/pattern together with lesson files
       formData.append("test_paper_pattern", testPaperPattern || "");
       formData.append("instructions", testPaperPattern || "");
       formData.append("pattern", testPaperPattern || "");
@@ -321,7 +338,6 @@ export default function TeacherCreateWorkPage() {
         model_answer_file_url: uploadedModelAnswer.url || "",
         model_answer_file_name: uploadedModelAnswer.name || "",
 
-        // test paper extra fields
         paper_mode: workType === "test_paper" ? paperMode : null,
         difficulty: workType === "test_paper" ? difficulty : null,
         total_marks: workType === "test_paper" ? safeNumber(totalMarks, 0) : null,
@@ -347,7 +363,6 @@ export default function TeacherCreateWorkPage() {
           : "Work created successfully."
       );
 
-      // safe reset
       setTitle("");
       setQuestionText("");
       setKeywords("");
@@ -371,6 +386,28 @@ export default function TeacherCreateWorkPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleReset() {
+    setTitle("");
+    setQuestionText("");
+    setKeywords("");
+    setGeneratedPaper("");
+    setGeneratedAnswerKey("");
+    setTestPaperPattern("");
+    setQuestionFile(null);
+    setModelAnswerFile(null);
+    setLessonFiles([]);
+    setMessage("");
+    setError("");
+
+    const questionInput = document.getElementById("question-file-input");
+    const modelAnswerInput = document.getElementById("model-answer-file-input");
+    const lessonFilesInput = document.getElementById("lesson-files-input");
+
+    if (questionInput) questionInput.value = "";
+    if (modelAnswerInput) modelAnswerInput.value = "";
+    if (lessonFilesInput) lessonFilesInput.value = "";
   }
 
   if (!isAllowed) {
@@ -569,14 +606,33 @@ export default function TeacherCreateWorkPage() {
                           onChange={handleLessonFilesChange}
                           className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
                         />
+
                         {lessonFiles.length > 0 ? (
-                          <div className="mt-2 text-sm text-gray-600">
-                            {lessonFiles.length} lesson file(s) selected:
-                            <ul className="mt-1 list-disc pl-5">
+                          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
+                            <p className="text-sm font-semibold text-gray-700 mb-2">
+                              {lessonFiles.length} lesson file(s) selected:
+                            </p>
+
+                            <div className="space-y-2">
                               {lessonFiles.map((file, index) => (
-                                <li key={`${file.name}-${index}`}>{file.name}</li>
+                                <div
+                                  key={`${file.name}-${file.size}-${index}`}
+                                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2"
+                                >
+                                  <span className="text-sm text-gray-700 break-all">
+                                    {file.name}
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLessonFile(index)}
+                                    className="shrink-0 rounded-lg bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
                               ))}
-                            </ul>
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -728,27 +784,7 @@ Answer in detail (Any 2) from given 3 questions. 8 marks`}
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setTitle("");
-                      setQuestionText("");
-                      setKeywords("");
-                      setGeneratedPaper("");
-                      setGeneratedAnswerKey("");
-                      setTestPaperPattern("");
-                      setQuestionFile(null);
-                      setModelAnswerFile(null);
-                      setLessonFiles([]);
-                      setMessage("");
-                      setError("");
-
-                      const questionInput = document.getElementById("question-file-input");
-                      const modelAnswerInput = document.getElementById("model-answer-file-input");
-                      const lessonFilesInput = document.getElementById("lesson-files-input");
-
-                      if (questionInput) questionInput.value = "";
-                      if (modelAnswerInput) modelAnswerInput.value = "";
-                      if (lessonFilesInput) lessonFilesInput.value = "";
-                    }}
+                    onClick={handleReset}
                     className="rounded-xl bg-gray-200 px-5 py-2.5 text-gray-800 font-semibold hover:bg-gray-300"
                   >
                     Reset

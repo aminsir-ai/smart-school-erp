@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -30,7 +31,45 @@ function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
 
+function getAlertStyles(severity) {
+  if (severity === "high") {
+    return {
+      card: "bg-red-50 border-red-200",
+      badge: "bg-red-100 text-red-700",
+      title: "text-red-800",
+      text: "text-red-700",
+      button: "bg-red-600 hover:bg-red-700 text-white",
+    };
+  }
+
+  if (severity === "medium") {
+    return {
+      card: "bg-yellow-50 border-yellow-200",
+      badge: "bg-yellow-100 text-yellow-700",
+      title: "text-yellow-800",
+      text: "text-yellow-700",
+      button: "bg-yellow-600 hover:bg-yellow-700 text-white",
+    };
+  }
+
+  return {
+    card: "bg-green-50 border-green-200",
+    badge: "bg-green-100 text-green-700",
+    title: "text-green-800",
+    text: "text-green-700",
+    button: "bg-green-600 hover:bg-green-700 text-white",
+  };
+}
+
+function getSeverityLabel(severity) {
+  if (severity === "high") return "High";
+  if (severity === "medium") return "Medium";
+  return "Normal";
+}
+
 export default function AdminDashboard() {
+  const router = useRouter();
+
   const [userName, setUserName] = useState("Admin");
   const [userRole, setUserRole] = useState("");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -130,6 +169,39 @@ export default function AdminDashboard() {
 
   const netToday = todayFees - todayExpense;
 
+  const quickActions = [
+    {
+      title: "Mark Attendance",
+      description: "Open teacher attendance and update today's records.",
+      href: "/admin-teacher-attendance",
+      tone: "border-blue-100 bg-blue-50 text-blue-700",
+    },
+    {
+      title: "Collect Fees",
+      description: "Open fee collection and record today’s payments.",
+      href: "/admin-fees",
+      tone: "border-green-100 bg-green-50 text-green-700",
+    },
+    {
+      title: "Add Expense",
+      description: "Open expenditure page and add today’s spending.",
+      href: "/admin-expenditure",
+      tone: "border-red-100 bg-red-50 text-red-700",
+    },
+    {
+      title: "View Outstanding",
+      description: "Check pending dues and overdue student accounts.",
+      href: "/admin-outstanding-fees",
+      tone: "border-yellow-100 bg-yellow-50 text-yellow-700",
+    },
+    {
+      title: "Open Management Dashboard",
+      description: "Go to management dashboard for deeper monitoring.",
+      href: "/management",
+      tone: "border-purple-100 bg-purple-50 text-purple-700",
+    },
+  ];
+
   const financialStatus = useMemo(() => {
     if (todayFees === 0 && todayExpense === 0) {
       return {
@@ -162,6 +234,67 @@ export default function AdminDashboard() {
     };
   }, [todayFees, todayExpense, netToday]);
 
+  const adminSmartAlerts = useMemo(() => {
+    const alerts = [];
+
+    if (todayFees === 0) {
+      alerts.push({
+        id: "fees-zero",
+        title: "No fee collection today",
+        message: "No fee payment has been recorded for today yet.",
+        severity: "medium",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+      });
+    }
+
+    if (todayExpense === 0) {
+      alerts.push({
+        id: "expense-zero",
+        title: "No expense entry today",
+        message: "No expenditure has been recorded for today yet.",
+        severity: "normal",
+        actionLabel: "Add Expense",
+        href: "/admin-expenditure",
+      });
+    }
+
+    if (netToday < 0) {
+      alerts.push({
+        id: "negative-net",
+        title: "Negative net balance today",
+        message: "Today's expenses are higher than today's fees.",
+        severity: "high",
+        actionLabel: "Add Expense",
+        href: "/admin-expenditure",
+      });
+    }
+
+    if (todayFees > 0 && netToday > 0) {
+      alerts.push({
+        id: "healthy-collection",
+        title: "Healthy fee collection",
+        message: "Today's collections are ahead of expenses.",
+        severity: "normal",
+        actionLabel: "Collect Fees",
+        href: "/admin-fees",
+      });
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        id: "stable-day",
+        title: "Stable operations",
+        message: "Today's financial activity looks balanced.",
+        severity: "normal",
+        actionLabel: null,
+        href: null,
+      });
+    }
+
+    return alerts;
+  }, [todayFees, todayExpense, netToday]);
+
   const chartData = useMemo(() => {
     return [
       {
@@ -177,9 +310,31 @@ export default function AdminDashboard() {
 
   const chartMaxValue = useMemo(() => {
     const highest = Math.max(todayFees, todayExpense, 0);
+
     if (highest === 0) return 1000;
+    if (highest < 1000) return 1000;
+    if (highest < 5000) return 5000;
+    if (highest < 10000) return 10000;
+    if (highest < 50000) return 50000;
+
     return Math.ceil(highest * 1.2);
   }, [todayFees, todayExpense]);
+
+  function renderAlertButton(alert, styles) {
+    if (!alert?.actionLabel || !alert?.href) return null;
+
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => router.push(alert.href)}
+          className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold transition ${styles.button}`}
+        >
+          {alert.actionLabel}
+        </button>
+      </div>
+    );
+  }
 
   if (isCheckingAuth) {
     return (

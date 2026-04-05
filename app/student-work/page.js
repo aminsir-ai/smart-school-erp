@@ -5,7 +5,7 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
-const WORK_TYPE_TABS = ["All", "Homework", "Class Work"];
+const WORK_TYPE_TABS = ["All", "Homework", "Class Work", "Quiz", "Test Paper"];
 const STATUS_TABS = ["All", "Pending", "Submitted", "Checked"];
 
 function normalizeWorkType(value) {
@@ -13,6 +13,8 @@ function normalizeWorkType(value) {
 
   if (text === "homework" || text === "home work") return "Homework";
   if (text === "classwork" || text === "class work") return "Class Work";
+  if (text === "quiz") return "Quiz";
+  if (text === "test_paper" || text === "test paper") return "Test Paper";
 
   return "Homework";
 }
@@ -57,7 +59,14 @@ function getSubjectLabel(work) {
 }
 
 function getDescriptionLabel(work) {
-  return work?.question || work?.description || work?.instructions || "";
+  return (
+    work?.generated_paper ||
+    work?.question_text ||
+    work?.question ||
+    work?.description ||
+    work?.instructions ||
+    ""
+  );
 }
 
 export default function StudentWorkPage() {
@@ -373,6 +382,10 @@ export default function StudentWorkPage() {
                   const workTypeBadgeClass =
                     workType === "Class Work"
                       ? "bg-purple-100 text-purple-700"
+                      : workType === "Test Paper"
+                      ? "bg-red-100 text-red-700"
+                      : workType === "Quiz"
+                      ? "bg-orange-100 text-orange-700"
                       : "bg-blue-100 text-blue-700";
 
                   return (

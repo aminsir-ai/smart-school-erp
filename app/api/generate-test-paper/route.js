@@ -40,23 +40,26 @@ Reference Lesson Summary:
 ${lessonSummary || "Lesson content received."}
 
 ----------------------------------------
-Sample Question Paper
+Question Paper
 ----------------------------------------
 
-Q1. Answer the following based on the lesson content.
-Marks: ${Math.max(1, Math.floor((totalMarks || 10) / Math.max(1, questionCount || 5)))}
+Q1. Choose the correct options and rewrite the sentences.
+Marks: 4
 
-Q2. Write short answers from the lesson.
-Marks: ${Math.max(1, Math.floor((totalMarks || 10) / Math.max(1, questionCount || 5)))}
+Q2. Are the following sentences Right or Wrong?
+Marks: 3
 
-Q3. Explain the key concept in simple words.
-Marks: ${Math.max(1, Math.floor((totalMarks || 10) / Math.max(1, questionCount || 5)))}
+Q3. Answer the following questions in one sentence each.
+Marks: 2
 
-Q4. Answer as per the provided instructions/pattern.
-Marks: Remaining as per paper pattern.
+Q4. Give geographical reasons. (Any 1 out of 2)
+Marks: 3
+
+Q5. Answer in detail. (Any 2 out of 3)
+Marks: 8
 
 Note:
-This is mock output. Real AI generation can be connected next.`;
+This is mock output based on your current route logic. Real AI generation can be connected next.`;
 }
 
 function buildAnswerKey({
@@ -78,16 +81,26 @@ Reference Lesson Summary:
 ${lessonSummary || "Lesson content received."}
 
 ----------------------------------------
-Sample Answer Key
+Answer Key / Marking Guide
 ----------------------------------------
 
-1. Correct answer should be written from the lesson meaningfully.
-2. Short answers should be based on the lesson points.
-3. Detailed answer should explain the main idea clearly.
-4. Marks should be awarded according to correctness, completeness, and presentation.
+1. Correct option questions:
+Award marks for correct choice and correct rewritten sentence.
+
+2. Right / Wrong:
+Award 1 mark for each correct answer.
+
+3. One sentence answers:
+Award marks for short, relevant, correct answers.
+
+4. Geographical reasons:
+Award marks based on correctness, clarity, and explanation.
+
+5. Detailed answers:
+Award marks based on completeness, structure, and relevance.
 
 Note:
-This is mock output. Real AI answer-key generation can be connected next.`;
+This is mock output based on your current route logic. Real AI answer-key generation can be connected next.`;
 }
 
 export async function POST(req) {
@@ -162,7 +175,6 @@ Return:
 2. Answer Key
 `.trim();
 
-    // TEMP MOCK RESPONSE
     const paper = buildQuestionPaper({
       title,
       className,

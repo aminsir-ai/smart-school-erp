@@ -316,6 +316,7 @@ export default function AdminDashboard() {
         severity: "medium",
         actionLabel: "Collect Fees",
         href: "/admin-fees",
+        score: 80,
       });
     }
 
@@ -327,6 +328,7 @@ export default function AdminDashboard() {
         severity: "normal",
         actionLabel: "Add Expense",
         href: "/admin-expenditure",
+        score: 40,
       });
     }
 
@@ -338,6 +340,7 @@ export default function AdminDashboard() {
         severity: "high",
         actionLabel: "Add Expense",
         href: "/admin-expenditure",
+        score: 100,
       });
     }
 
@@ -349,6 +352,7 @@ export default function AdminDashboard() {
         severity: "normal",
         actionLabel: "Collect Fees",
         href: "/admin-fees",
+        score: 20,
       });
     }
 
@@ -360,10 +364,11 @@ export default function AdminDashboard() {
         severity: "normal",
         actionLabel: null,
         href: null,
+        score: 10,
       });
     }
 
-    return alerts;
+    return alerts.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   }, [todayFees, todayExpense, netToday]);
 
   const adminRecommendations = useMemo(() => {
@@ -529,6 +534,7 @@ export default function AdminDashboard() {
         priority: "medium",
         actionLabel: "Collect Fees",
         href: "/admin-fees",
+        score: 80,
       });
     }
 
@@ -540,6 +546,7 @@ export default function AdminDashboard() {
         priority: "watch",
         actionLabel: "Add Expense",
         href: "/admin-expenditure",
+        score: 50,
       });
     }
 
@@ -551,6 +558,7 @@ export default function AdminDashboard() {
         priority: "high",
         actionLabel: "Open Management Dashboard",
         href: "/management",
+        score: 100,
       });
     }
 
@@ -562,6 +570,7 @@ export default function AdminDashboard() {
         priority: "clear",
         actionLabel: "Collect Fees",
         href: "/admin-fees",
+        score: 20,
       });
     }
 
@@ -573,10 +582,11 @@ export default function AdminDashboard() {
         priority: "clear",
         actionLabel: null,
         href: null,
+        score: 10,
       });
     }
 
-    return watchlist;
+    return watchlist.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
   }, [todayFees, todayExpense, netToday]);
 
   const chartData = useMemo(() => {

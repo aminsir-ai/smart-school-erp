@@ -334,7 +334,7 @@ export default function TeacherCreateWorkPage() {
       const insertPayload = {
         title: title.trim(),
         class_name: selectedClass,
-        subject,
+        subject: subject,
         type: workType,
         question: finalQuestionText,
         question_text: finalQuestionText,
@@ -360,11 +360,23 @@ export default function TeacherCreateWorkPage() {
         created_at: new Date().toISOString(),
       };
 
-      const { error: insertError } = await supabase.from("works").insert([insertPayload]);
+      console.log("INSERT PAYLOAD:", insertPayload);
+
+      const { data: insertedRow, error: insertError } = await supabase
+        .from("works")
+        .insert([insertPayload])
+        .select("*")
+        .single();
 
       if (insertError) {
         throw insertError;
       }
+
+      if (!insertedRow || !insertedRow.id) {
+        throw new Error("Work save failed. No row was returned from database.");
+      }
+
+      console.log("INSERTED WORK ROW:", insertedRow);
 
       setMessage(
         workType === "test_paper"
@@ -390,6 +402,10 @@ export default function TeacherCreateWorkPage() {
       if (questionInput) questionInput.value = "";
       if (modelAnswerInput) modelAnswerInput.value = "";
       if (lessonFilesInput) lessonFilesInput.value = "";
+
+      setTimeout(() => {
+        window.location.href = "/teacher-work-list";
+      }, 800);
     } catch (err) {
       console.error("SAVE WORK ERROR:", err);
       setError(err.message || "Failed to save work.");

@@ -13,7 +13,227 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function buildQuestionPaper({
+function normalizeWhitespace(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function titleCase(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function parsePatternSections(patternText, fallbackQuestionCount, fallbackTotalMarks) {
+  const cleaned = normalizeWhitespace(patternText);
+  const lines = cleaned
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections = [];
+
+  for (const line of lines) {
+    const qCountMatch =
+      line.match(/(\d+)\s*questions?/i) ||
+      line.match(/(\d+)\s*question\b/i);
+
+    const marksMatch =
+      line.match(/(\d+)\s*marks?/i) ||
+      line.match(/(\d+)\s*mark\b/i);
+
+    const eachMarkMatch =
+      line.match(/(\d+)\s*mark\s*each/i) ||
+      line.match(/(\d+)\s*marks\s*each/i);
+
+    const anyMatch =
+      line.match(/any[- ]?(\d+)/i) ||
+      line.match(/\(any[- ]?(\d+)/i);
+
+    const outOfMatch =
+      line.match(/out of (\d+)/i) ||
+      line.match(/given (\d+)/i);
+
+    let sectionTitle = line
+      .replace(/[\-–—]*\s*\d+\s*marks?.*$/i, "")
+      .replace(/[\-–—]*\s*\d+\s*questions?.*$/i, "")
+      .replace(/\(.*?\)/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    if (!sectionTitle) {
+      sectionTitle = "Answer the following";
+    }
+
+    const section = {
+      rawLine: line,
+      title: sectionTitle,
+      marks: marksMatch ? Number(marksMatch[1]) : null,
+      questionCount: qCountMatch ? Number(qCountMatch[1]) : null,
+      marksEach: eachMarkMatch ? Number(eachMarkMatch[1]) : null,
+      anyCount: anyMatch ? Number(anyMatch[1]) : null,
+      outOfCount: outOfMatch ? Number(outOfMatch[1]) : null,
+    };
+
+    sections.push(section);
+  }
+
+  if (sections.length === 0) {
+    const safeQuestionCount = fallbackQuestionCount > 0 ? fallbackQuestionCount : 5;
+    const safeTotalMarks = fallbackTotalMarks > 0 ? fallbackTotalMarks : 20;
+
+    sections.push({
+      rawLine: "Answer the following questions.",
+      title: "Answer the following questions",
+      marks: safeTotalMarks,
+      questionCount: safeQuestionCount,
+      marksEach: Math.max(1, Math.floor(safeTotalMarks / safeQuestionCount)),
+      anyCount: null,
+      outOfCount: null,
+    });
+  }
+
+  const missingQuestionCounts = sections.filter((s) => !s.questionCount);
+  const existingQuestionTotal = sections.reduce(
+    (sum, s) => sum + (s.questionCount || 0),
+    0
+  );
+
+  if (missingQuestionCounts.length > 0) {
+    const remainingQuestions = Math.max(
+      0,
+      (fallbackQuestionCount || 0) - existingQuestionTotal
+    );
+
+    const perSection = missingQuestionCounts.length
+      ? Math.max(1, Math.floor(remainingQuestions / missingQuestionCounts.length))
+      : 0;
+
+    let assigned = 0;
+
+    missingQuestionCounts.forEach((section, index) => {
+      const isLast = index === missingQuestionCounts.length - 1;
+      const value = isLast
+        ? Math.max(1, remainingQuestions - assigned)
+        : Math.max(1, perSection);
+
+      section.questionCount = value;
+      assigned += value;
+    });
+  }
+
+  sections.forEach((section) => {
+    if (!section.marksEach) {
+      if (section.marks && section.questionCount) {
+        section.marksEach = Math.max(1, Math.floor(section.marks / section.questionCount));
+      } else {
+        section.marksEach = 1;
+      }
+    }
+  });
+
+  return sections;
+}
+
+function getTopicHints(subject, lessonSummary, keywords) {
+  const source = `${subject} ${lessonSummary} ${keywords}`.toLowerCase();
+
+  const hints = [];
+
+  if (source.includes("geography")) {
+    hints.push("location", "extent", "direction", "boundary", "climate", "field visit", "observation", "map");
+  }
+  if (source.includes("history")) {
+    hints.push("event", "timeline", "leader", "movement", "cause", "impact");
+  }
+  if (source.includes("science")) {
+    hints.push("definition", "process", "experiment", "example", "uses", "advantages");
+  }
+  if (source.includes("math")) {
+    hints.push("formula", "solve", "find", "calculate", "simplify", "equation");
+  }
+  if (source.includes("english")) {
+    hints.push("grammar", "meaning", "sentence", "rewrite", "example", "correct option");
+  }
+
+  if (source.includes("location")) hints.push("location and extent");
+  if (source.includes("extent")) hints.push("extent");
+  if (source.includes("field visit")) hints.push("field visit");
+  if (source.includes("visit")) hints.push("visit observations");
+
+  if (hints.length === 0) {
+    hints.push("main concept", "definition", "example", "reason", "explanation");
+  }
+
+  return Array.from(new Set(hints));
+}
+
+function buildQuestionText(sectionTitle, qNumber, topicHints) {
+  const title = sectionTitle.toLowerCase();
+  const topic = topicHints[(qNumber - 1) % topicHints.length] || "the lesson";
+
+  if (title.includes("correct option")) {
+    return `Choose the correct option for the statement related to ${topic}.`;
+  }
+
+  if (title.includes("right or wrong")) {
+    return `State whether the following statement about ${topic} is Right or Wrong.`;
+  }
+
+  if (title.includes("one sentence")) {
+    return `Answer in one sentence: What do you understand by ${topic}?`;
+  }
+
+  if (title.includes("geographical reason")) {
+    return `Give geographical reasons related to ${topic}.`;
+  }
+
+  if (title.includes("detail")) {
+    return `Answer in detail about ${topic}.`;
+  }
+
+  if (title.includes("short")) {
+    return `Write a short answer about ${topic}.`;
+  }
+
+  if (title.includes("objective")) {
+    return `Answer the objective question based on ${topic}.`;
+  }
+
+  return `Answer the following question about ${topic}.`;
+}
+
+function buildAnswerLine(sectionTitle, qNumber, topicHints) {
+  const title = sectionTitle.toLowerCase();
+  const topic = topicHints[(qNumber - 1) % topicHints.length] || "the lesson";
+
+  if (title.includes("correct option")) {
+    return `Expected answer: Student should select the correct option related to ${topic}.`;
+  }
+
+  if (title.includes("right or wrong")) {
+    return `Expected answer: Student should correctly identify the statement about ${topic} as Right or Wrong.`;
+  }
+
+  if (title.includes("one sentence")) {
+    return `Expected answer: A short one-sentence answer explaining ${topic}.`;
+  }
+
+  if (title.includes("geographical reason")) {
+    return `Expected answer: Student should give clear geographical reasons for ${topic}.`;
+  }
+
+  if (title.includes("detail")) {
+    return `Expected answer: Student should write a detailed explanation about ${topic}.`;
+  }
+
+  return `Expected answer: Student should answer correctly about ${topic}.`;
+}
+
+function buildStructuredQuestionPaper({
   title,
   className,
   subject,
@@ -23,7 +243,39 @@ function buildQuestionPaper({
   difficulty,
   testPaperPattern,
   lessonSummary,
+  keywords,
 }) {
+  const sections = parsePatternSections(testPaperPattern, questionCount, totalMarks);
+  const topicHints = getTopicHints(subject, lessonSummary, keywords);
+
+  let serial = 1;
+  const sectionBlocks = [];
+
+  sections.forEach((section, index) => {
+    const lines = [];
+    const displayCount = section.questionCount || 1;
+    const displayMarks = section.marks ?? displayCount * (section.marksEach || 1);
+
+    lines.push(
+      `Section ${index + 1}: ${titleCase(section.title)}`
+    );
+    lines.push(
+      `Marks: ${displayMarks}${section.anyCount ? ` | Attempt Any ${section.anyCount}` : ""}${section.outOfCount ? ` out of ${section.outOfCount}` : ""}`
+    );
+    lines.push("");
+
+    for (let i = 0; i < displayCount; i += 1) {
+      const questionText = buildQuestionText(section.title, serial, topicHints);
+      lines.push(`${serial}. ${questionText}`);
+      if (section.marksEach) {
+        lines.push(`   (${section.marksEach} mark${section.marksEach > 1 ? "s" : ""})`);
+      }
+      serial += 1;
+    }
+
+    sectionBlocks.push(lines.join("\n"));
+  });
+
   return `${title || "Test Paper"}
 
 Class: ${className || "-"}
@@ -43,32 +295,47 @@ ${lessonSummary || "Lesson content received."}
 Question Paper
 ----------------------------------------
 
-Q1. Choose the correct options and rewrite the sentences.
-Marks: 4
-
-Q2. Are the following sentences Right or Wrong?
-Marks: 3
-
-Q3. Answer the following questions in one sentence each.
-Marks: 2
-
-Q4. Give geographical reasons. (Any 1 out of 2)
-Marks: 3
-
-Q5. Answer in detail. (Any 2 out of 3)
-Marks: 8
-
-Note:
-This is mock output based on your current route logic. Real AI generation can be connected next.`;
+${sectionBlocks.join("\n\n")}`;
 }
 
-function buildAnswerKey({
+function buildStructuredAnswerKey({
   title,
   className,
   subject,
+  totalMarks,
+  questionCount,
   testPaperPattern,
   lessonSummary,
+  keywords,
 }) {
+  const sections = parsePatternSections(testPaperPattern, questionCount, totalMarks);
+  const topicHints = getTopicHints(subject, lessonSummary, keywords);
+
+  let serial = 1;
+  const sectionBlocks = [];
+
+  sections.forEach((section, index) => {
+    const lines = [];
+    const displayCount = section.questionCount || 1;
+    const displayMarks = section.marks ?? displayCount * (section.marksEach || 1);
+
+    lines.push(
+      `Section ${index + 1}: ${titleCase(section.title)}`
+    );
+    lines.push(
+      `Marks: ${displayMarks}${section.anyCount ? ` | Attempt Any ${section.anyCount}` : ""}${section.outOfCount ? ` out of ${section.outOfCount}` : ""}`
+    );
+    lines.push("");
+
+    for (let i = 0; i < displayCount; i += 1) {
+      const answerLine = buildAnswerLine(section.title, serial, topicHints);
+      lines.push(`${serial}. ${answerLine}`);
+      serial += 1;
+    }
+
+    sectionBlocks.push(lines.join("\n"));
+  });
+
   return `${title || "Test Paper"} - Answer Key
 
 Class: ${className || "-"}
@@ -84,23 +351,7 @@ ${lessonSummary || "Lesson content received."}
 Answer Key / Marking Guide
 ----------------------------------------
 
-1. Correct option questions:
-Award marks for correct choice and correct rewritten sentence.
-
-2. Right / Wrong:
-Award 1 mark for each correct answer.
-
-3. One sentence answers:
-Award marks for short, relevant, correct answers.
-
-4. Geographical reasons:
-Award marks based on correctness, clarity, and explanation.
-
-5. Detailed answers:
-Award marks based on completeness, structure, and relevance.
-
-Note:
-This is mock output based on your current route logic. Real AI answer-key generation can be connected next.`;
+${sectionBlocks.join("\n\n")}`;
 }
 
 export async function POST(req) {
@@ -147,35 +398,23 @@ export async function POST(req) {
         ? `Lesson files received:\n${lessonFileUrls.join("\n")}`
         : "Lesson content received.");
 
-    const prompt = `
-You are a school exam paper generator.
+    const promptPreview = `
+Create a ${paperMode} ${subject} test paper for class ${className}.
+Total Marks: ${totalMarks}
+Question Count: ${questionCount}
+Difficulty: ${difficulty}
 
-Create a ${paperMode} test paper based on the following lesson content.
-
-Requirements:
-- Total Marks: ${totalMarks}
-- Number of Questions: ${questionCount}
-- Difficulty: ${difficulty}
-- Class: ${className}
-- Subject: ${subject}
-- Title: ${title}
-- Keywords: ${keywords}
-
-Typed Pattern / Instructions:
+Pattern:
 ${testPaperPattern || "No custom pattern provided."}
 
-Lesson Content:
-${combinedText || "Lesson text not directly provided. Refer to lesson file URLs."}
+Lesson Summary:
+${lessonSummary}
 
-Lesson File URLs:
-${lessonFileUrls.join("\n") || "No lesson file URLs provided."}
-
-Return:
-1. Question Paper
-2. Answer Key
+Keywords:
+${keywords || "-"}
 `.trim();
 
-    const paper = buildQuestionPaper({
+    const paper = buildStructuredQuestionPaper({
       title,
       className,
       subject,
@@ -185,21 +424,25 @@ Return:
       difficulty,
       testPaperPattern,
       lessonSummary,
+      keywords,
     });
 
-    const answerKey = buildAnswerKey({
+    const answerKey = buildStructuredAnswerKey({
       title,
       className,
       subject,
+      totalMarks,
+      questionCount,
       testPaperPattern,
       lessonSummary,
+      keywords,
     });
 
     return NextResponse.json({
       success: true,
       paper,
       answerKey,
-      promptPreview: prompt,
+      promptPreview,
     });
   } catch (error) {
     console.error("GENERATE_TEST_PAPER_ROUTE_ERROR:", error);

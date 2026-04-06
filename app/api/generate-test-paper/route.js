@@ -28,12 +28,6 @@ function cleanText(text) {
     .trim();
 }
 
-function titleCase(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function splitPatternLines(patternText) {
   return String(patternText || "")
     .replace(/\r/g, "")
@@ -58,6 +52,12 @@ function detectQuestionType(line) {
   return "general";
 }
 
+function titleCase(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function extractTopicHints(subject, lessonSummary, keywords) {
   const source = `${subject} ${lessonSummary} ${keywords}`.toLowerCase();
   const hints = [];
@@ -70,18 +70,78 @@ function extractTopicHints(subject, lessonSummary, keywords) {
   if (source.includes("boundary")) hints.push("boundaries");
   if (source.includes("climate")) hints.push("climate");
   if (source.includes("map")) hints.push("map");
-  if (source.includes("field visit")) hints.push("field visit");
-  if (source.includes("visit")) hints.push("field visit");
+  if (source.includes("field visit")) hints.push("field_visit");
+  if (source.includes("visit")) hints.push("field_visit");
   if (source.includes("observation")) hints.push("observations");
-  if (source.includes("geography")) hints.push("geographical features");
+  if (source.includes("geography")) hints.push("geographical_features");
   if (source.includes("brazil")) hints.push("brazil");
   if (source.includes("india")) hints.push("india");
 
   if (hints.length === 0) {
-    hints.push("location", "extent", "field visit", "observations", "map");
+    hints.push("location", "extent", "field_visit", "observations", "map");
   }
 
   return Array.from(new Set(hints));
+}
+
+function parseSampleLikeSections(patternText, totalMarks, fallbackQuestionCount) {
+  const lines = splitPatternLines(patternText);
+  const sections = [];
+
+  lines.forEach((line) => {
+    const lower = line.toLowerCase();
+
+    const marksMatch = lower.match(/(\d+)\s*marks?/i);
+    const qMatch = lower.match(/(\d+)\s*questions?/i);
+    const eachMatch =
+      lower.match(/(\d+)\s*marks?\s*each/i) ||
+      lower.match(/(\d+)\s*mark\s*each/i);
+
+    const anyMatch = lower.match(/any[- ]?(\d+)/i);
+    const outOfMatch = lower.match(/out of\s*(\d+)/i);
+
+    let title = line
+      .replace(/[\-–—]*\s*\(?\s*any[- ]?\d+.*$/i, "")
+      .replace(/\d+\s*marks?.*$/i, "")
+      .replace(/\d+\s*questions?.*$/i, "")
+      .trim();
+
+    title = cleanText(title);
+
+    const type = detectQuestionType(line);
+    const marks = marksMatch ? Number(marksMatch[1]) : 0;
+    const questionCount = qMatch ? Number(qMatch[1]) : 0;
+
+    let marksEach = eachMatch ? Number(eachMatch[1]) : 0;
+    if (!marksEach && marks && questionCount) {
+      marksEach = Math.max(1, Math.floor(marks / questionCount));
+    }
+    if (!marksEach) marksEach = 1;
+
+    sections.push({
+      title: title || "Answer the following",
+      type,
+      marks: marks || 0,
+      questionCount: questionCount || 0,
+      marksEach,
+      anyCount: anyMatch ? Number(anyMatch[1]) : null,
+      outOfCount: outOfMatch ? Number(outOfMatch[1]) : null,
+    });
+  });
+
+  if (sections.length === 0) {
+    sections.push({
+      title: "Answer the following questions",
+      type: "general",
+      marks: totalMarks || 20,
+      questionCount: fallbackQuestionCount || 5,
+      marksEach: 1,
+      anyCount: null,
+      outOfCount: null,
+    });
+  }
+
+  return sections;
 }
 
 function buildQuestionBanks(topicHints) {
@@ -89,11 +149,13 @@ function buildQuestionBanks(topicHints) {
     mcq: {
       location: [
         {
+          id: "mcq_location_1",
           stem: "_____ is the geographical position of a place on the Earth.",
           options: ["Location", "Climate", "Vegetation", "Population"],
           answer: "Location",
         },
         {
+          id: "mcq_location_2",
           stem: "India is located in the _____ hemisphere.",
           options: ["Northern", "Southern", "Western", "Eastern"],
           answer: "Northern",
@@ -101,11 +163,13 @@ function buildQuestionBanks(topicHints) {
       ],
       extent: [
         {
+          id: "mcq_extent_1",
           stem: "The latitudinal extent of India is from _____.",
           options: ["8°4'N to 37°6'N", "68°7'E to 97°25'E", "0° to 90°N", "10°S to 40°S"],
           answer: "8°4'N to 37°6'N",
         },
         {
+          id: "mcq_extent_2",
           stem: "The longitudinal extent of India is from _____.",
           options: ["68°7'E to 97°25'E", "8°4'N to 37°6'N", "0° to 90°E", "20°W to 60°W"],
           answer: "68°7'E to 97°25'E",
@@ -113,6 +177,7 @@ function buildQuestionBanks(topicHints) {
       ],
       map: [
         {
+          id: "mcq_map_1",
           stem: "A map helps us to understand _____.",
           options: ["geographical information", "only decoration", "temperature only", "food habits"],
           answer: "geographical information",
@@ -120,13 +185,15 @@ function buildQuestionBanks(topicHints) {
       ],
       climate: [
         {
+          id: "mcq_climate_1",
           stem: "Climate means the _____ of a place.",
           options: ["long-term weather pattern", "daily rainfall only", "type of map", "soil colour"],
           answer: "long-term weather pattern",
         },
       ],
-      "field visit": [
+      field_visit: [
         {
+          id: "mcq_field_1",
           stem: "A geographical field visit means _____.",
           options: [
             "visiting a place for geographical study",
@@ -137,6 +204,7 @@ function buildQuestionBanks(topicHints) {
           answer: "visiting a place for geographical study",
         },
         {
+          id: "mcq_field_2",
           stem: "During a field visit, students mainly do _____.",
           options: ["observation", "sleeping", "shopping", "singing"],
           answer: "observation",
@@ -144,6 +212,7 @@ function buildQuestionBanks(topicHints) {
       ],
       brazil: [
         {
+          id: "mcq_brazil_1",
           stem: "Brazil is a country in _____.",
           options: ["South America", "Asia", "Africa", "Europe"],
           answer: "South America",
@@ -151,6 +220,7 @@ function buildQuestionBanks(topicHints) {
       ],
       india: [
         {
+          id: "mcq_india_1",
           stem: "India is a country in _____.",
           options: ["Asia", "Europe", "Africa", "Australia"],
           answer: "Asia",
@@ -161,30 +231,36 @@ function buildQuestionBanks(topicHints) {
     rw: {
       field_visit: [
         {
+          id: "rw_field_1",
           statement: "Planning is important before going for a field visit.",
           answer: "Right",
         },
         {
+          id: "rw_field_2",
           statement: "A field visit is done only for entertainment.",
           answer: "Wrong",
         },
         {
+          id: "rw_field_3",
           statement: "Observation is important during a field visit.",
           answer: "Right",
         },
       ],
       climate: [
         {
+          id: "rw_climate_1",
           statement: "Climate is the long-term weather condition of a place.",
           answer: "Right",
         },
       ],
       geography: [
         {
+          id: "rw_geo_1",
           statement: "Maps are not useful in geography.",
           answer: "Wrong",
         },
         {
+          id: "rw_geo_2",
           statement: "Geographical features affect human life.",
           answer: "Right",
         },
@@ -194,32 +270,38 @@ function buildQuestionBanks(topicHints) {
     oneSentence: {
       field_visit: [
         {
+          id: "one_field_1",
           question: "What is field visit?",
           answer: "A field visit is a visit to a place for direct geographical study and observation.",
         },
         {
+          id: "one_field_2",
           question: "Why is field visit important?",
           answer: "Field visit is important because it helps students understand geographical facts directly.",
         },
       ],
       india: [
         {
+          id: "one_india_1",
           question: "How many union territories are there in India?",
           answer: "There are 8 union territories in India.",
         },
         {
+          id: "one_india_2",
           question: "What is the capital of India?",
           answer: "New Delhi is the capital of India.",
         },
       ],
       location: [
         {
+          id: "one_location_1",
           question: "What is location?",
           answer: "Location means the position of a place on the Earth.",
         },
       ],
       extent: [
         {
+          id: "one_extent_1",
           question: "What is extent?",
           answer: "Extent means the spread of a place from one end to another.",
         },
@@ -229,24 +311,33 @@ function buildQuestionBanks(topicHints) {
     reasons: {
       field_visit: [
         {
+          id: "reason_field_1",
           question: "It is important to manage the waste generated during field visit.",
           answer: "Waste should be managed during field visit to keep the place clean, avoid pollution, and protect the environment.",
+        },
+        {
+          id: "reason_field_2",
+          question: "Observation is important during field visit.",
+          answer: "Observation is important during field visit because it helps students gather direct information and understand the place better.",
         },
       ],
       india: [
         {
+          id: "reason_india_1",
           question: "India has great importance because of its location.",
           answer: "India's location is important due to central position, trade routes, and strategic value.",
         },
       ],
       brazil: [
         {
+          id: "reason_brazil_1",
           question: "Brazil is seen as an important global market in the future.",
           answer: "Brazil has a large economy, rich resources, and an expanding global market role.",
         },
       ],
       climate: [
         {
+          id: "reason_climate_1",
           question: "Climate differs from place to place.",
           answer: "Climate differs due to latitude, altitude, distance from sea, and relief features.",
         },
@@ -256,26 +347,31 @@ function buildQuestionBanks(topicHints) {
     detail: {
       india: [
         {
+          id: "detail_india_1",
           question: "Write in detail about the historical background and the current status of India.",
           answer: "India has an ancient historical background and today it is a democratic republic with diverse geographical and economic importance.",
         },
         {
+          id: "detail_india_2",
           question: "What problems did India face after independence?",
           answer: "After independence, India faced partition issues, poverty, food shortage, illiteracy, and development challenges.",
         },
       ],
       brazil: [
         {
+          id: "detail_brazil_1",
           question: "What problems did Brazil face after independence?",
           answer: "Brazil faced political instability, economic inequality, and developmental challenges after independence.",
         },
       ],
       field_visit: [
         {
+          id: "detail_field_1",
           question: "How will you manage the litter during field visit?",
           answer: "Litter should be collected, segregated, and disposed of properly to maintain cleanliness during field visit.",
         },
         {
+          id: "detail_field_2",
           question: "Explain the importance of field visit in detail.",
           answer: "Field visit is important because it gives direct knowledge, encourages observation, and connects theory with practice.",
         },
@@ -294,9 +390,9 @@ function buildQuestionBanks(topicHints) {
   let mcq = collectFromBank(banks.mcq);
   let rw = collectFromBank({
     ...banks.rw,
-    "field visit": banks.rw.field_visit,
+    field_visit: banks.rw.field_visit,
     observations: banks.rw.field_visit,
-    "geographical features": banks.rw.geography,
+    geographical_features: banks.rw.geography,
     map: banks.rw.geography,
     location: banks.rw.geography,
     extent: banks.rw.geography,
@@ -306,7 +402,7 @@ function buildQuestionBanks(topicHints) {
   });
   let oneSentence = collectFromBank({
     ...banks.oneSentence,
-    "field visit": banks.oneSentence.field_visit,
+    field_visit: banks.oneSentence.field_visit,
     observations: banks.oneSentence.field_visit,
     india: banks.oneSentence.india,
     location: banks.oneSentence.location,
@@ -314,7 +410,7 @@ function buildQuestionBanks(topicHints) {
   });
   let reasons = collectFromBank({
     ...banks.reasons,
-    "field visit": banks.reasons.field_visit,
+    field_visit: banks.reasons.field_visit,
     observations: banks.reasons.field_visit,
     india: banks.reasons.india,
     brazil: banks.reasons.brazil,
@@ -324,13 +420,14 @@ function buildQuestionBanks(topicHints) {
     ...banks.detail,
     india: banks.detail.india,
     brazil: banks.detail.brazil,
-    "field visit": banks.detail.field_visit,
+    field_visit: banks.detail.field_visit,
     observations: banks.detail.field_visit,
   });
 
   if (mcq.length === 0) {
     mcq = [
       {
+        id: "fallback_mcq_1",
         stem: "_____ is important in geographical study.",
         options: ["Observation", "Decoration", "Singing", "Cooking"],
         answer: "Observation",
@@ -341,6 +438,7 @@ function buildQuestionBanks(topicHints) {
   if (rw.length === 0) {
     rw = [
       {
+        id: "fallback_rw_1",
         statement: "Geography helps us understand places and environment.",
         answer: "Right",
       },
@@ -350,6 +448,7 @@ function buildQuestionBanks(topicHints) {
   if (oneSentence.length === 0) {
     oneSentence = [
       {
+        id: "fallback_one_1",
         question: "What is geography?",
         answer: "Geography is the study of the Earth, places, and environment.",
       },
@@ -359,6 +458,7 @@ function buildQuestionBanks(topicHints) {
   if (reasons.length === 0) {
     reasons = [
       {
+        id: "fallback_reason_1",
         question: "Maps are important in geography.",
         answer: "Maps are important because they help us understand location, direction, and features clearly.",
       },
@@ -368,6 +468,7 @@ function buildQuestionBanks(topicHints) {
   if (detail.length === 0) {
     detail = [
       {
+        id: "fallback_detail_1",
         question: "Explain the importance of geography in detail.",
         answer: "Geography is important because it helps us understand land, climate, people, resources, and environment.",
       },
@@ -386,84 +487,10 @@ function shuffleArray(array) {
   return arr;
 }
 
-function takeCycled(list, count) {
-  const safeList = Array.isArray(list) && list.length > 0 ? list : [];
-  const result = [];
-
-  if (safeList.length === 0) return result;
-
+function takeUniqueItems(list, count) {
+  const safeList = Array.isArray(list) ? list : [];
   const shuffled = shuffleArray(safeList);
-  let index = 0;
-
-  while (result.length < count) {
-    result.push(shuffled[index % shuffled.length]);
-    index += 1;
-  }
-
-  return result;
-}
-
-function parseSampleLikeSections(patternText, totalMarks, questionCount) {
-  const lines = splitPatternLines(patternText);
-
-  const sections = [];
-
-  lines.forEach((line) => {
-    const lower = line.toLowerCase();
-
-    const marksMatch = lower.match(/(\d+)\s*marks?/i);
-    const qMatch = lower.match(/(\d+)\s*questions?/i);
-    const eachMatch = lower.match(/(\d+)\s*marks?\s*each/i) || lower.match(/(\d+)\s*mark\s*each/i);
-    const anyMatch = lower.match(/any[- ]?(\d+)/i);
-    const outOfMatch = lower.match(/out of\s*(\d+)/i) || lower.match(/(\d+)\s*questions?/i);
-
-    let title = line
-      .replace(/[\-–—]*\s*\(?\s*any[- ]?\d+.*$/i, "")
-      .replace(/\d+\s*marks?.*$/i, "")
-      .replace(/\d+\s*questions?.*$/i, "")
-      .trim();
-
-    title = cleanText(title);
-
-    const type = detectQuestionType(line);
-
-    const marks = marksMatch ? Number(marksMatch[1]) : 0;
-    const questionCountValue = qMatch ? Number(qMatch[1]) : 0;
-    let marksEach = eachMatch ? Number(eachMatch[1]) : 0;
-
-    if (!marksEach && marks && questionCountValue) {
-      marksEach = Math.max(1, Math.floor(marks / questionCountValue));
-    }
-
-    sections.push({
-      title,
-      type,
-      marks: marks || 0,
-      questionCount: questionCountValue || 0,
-      marksEach: marksEach || 1,
-      anyCount: anyMatch ? Number(anyMatch[1]) : null,
-      outOfCount:
-        anyMatch && outOfMatch
-          ? Number(outOfMatch[1])
-          : anyMatch && questionCountValue
-          ? questionCountValue
-          : null,
-    });
-  });
-
-  if (sections.length === 0) {
-    sections.push({
-      title: "Answer the following questions",
-      type: "general",
-      marks: totalMarks || 20,
-      questionCount: questionCount || 5,
-      marksEach: 1,
-      anyCount: null,
-      outOfCount: null,
-    });
-  }
-
-  return sections;
+  return shuffled.slice(0, Math.min(count, shuffled.length));
 }
 
 function formatHeader({ title, className, subject, totalMarks }) {
@@ -474,19 +501,47 @@ Subject: ${subject || "-"}
 Marks: ${totalMarks || 0}`;
 }
 
-function buildPaper({
+function generateSectionsWithItems({
+  sections,
+  banks,
+}) {
+  return sections.map((section) => {
+    let items = [];
+
+    if (section.type === "mcq") {
+      items = takeUniqueItems(banks.mcq, section.questionCount || 4);
+    } else if (section.type === "rw") {
+      items = takeUniqueItems(banks.rw, section.questionCount || 3);
+    } else if (section.type === "one") {
+      items = takeUniqueItems(banks.oneSentence, section.questionCount || 2);
+    } else if (section.type === "reason") {
+      items = takeUniqueItems(
+        banks.reasons,
+        section.outOfCount || section.questionCount || 2
+      );
+    } else if (section.type === "detail") {
+      items = takeUniqueItems(
+        banks.detail,
+        section.outOfCount || section.questionCount || 3
+      );
+    } else {
+      items = takeUniqueItems(banks.oneSentence, section.questionCount || 2);
+    }
+
+    return {
+      ...section,
+      items,
+    };
+  });
+}
+
+function buildPaperFromGenerated({
   title,
   className,
   subject,
   totalMarks,
-  testPaperPattern,
-  lessonSummary,
-  keywords,
+  generatedSections,
 }) {
-  const topicHints = extractTopicHints(subject, lessonSummary, keywords);
-  const banks = buildQuestionBanks(topicHints);
-  const sections = parseSampleLikeSections(testPaperPattern, totalMarks, 0);
-
   const lines = [];
 
   lines.push(formatHeader({ title, className, subject, totalMarks }));
@@ -496,15 +551,14 @@ function buildPaper({
   lines.push("----------------------------------------");
   lines.push("");
 
-  sections.forEach((section, index) => {
+  generatedSections.forEach((section, index) => {
     const sectionLabel = `Q.${index + 1}`;
     const titleText = section.title || "Answer the following";
     const marksText = `${section.marks}m`;
 
     if (section.type === "mcq") {
       lines.push(`${sectionLabel} ${titleText}    ${marksText}`);
-      const items = takeCycled(banks.mcq, section.questionCount || 4);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.stem}`);
         lines.push(`   (a) ${item.options[0]}  (b) ${item.options[1]}  (c) ${item.options[2]}  (d) ${item.options[3]}`);
       });
@@ -514,8 +568,7 @@ function buildPaper({
 
     if (section.type === "rw") {
       lines.push(`${sectionLabel} ${titleText}    ${marksText}`);
-      const items = takeCycled(banks.rw, section.questionCount || 3);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.statement} ______`);
       });
       lines.push("");
@@ -524,8 +577,7 @@ function buildPaper({
 
     if (section.type === "one") {
       lines.push(`${sectionLabel} ${titleText}    ${marksText}`);
-      const items = takeCycled(banks.oneSentence, section.questionCount || 2);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
@@ -535,9 +587,7 @@ function buildPaper({
     if (section.type === "reason") {
       const anyText = section.anyCount ? ` (Any ${section.anyCount})` : "";
       lines.push(`${sectionLabel} ${titleText}${anyText}    ${marksText}`);
-      const count = section.outOfCount || section.questionCount || 2;
-      const items = takeCycled(banks.reasons, count);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
@@ -547,9 +597,7 @@ function buildPaper({
     if (section.type === "detail") {
       const anyText = section.anyCount ? ` (Any ${section.anyCount})` : "";
       lines.push(`${sectionLabel} ${titleText}${anyText}    ${marksText}`);
-      const count = section.outOfCount || section.questionCount || 3;
-      const items = takeCycled(banks.detail, count);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
@@ -557,9 +605,8 @@ function buildPaper({
     }
 
     lines.push(`${sectionLabel} ${titleText}    ${marksText}`);
-    const items = takeCycled(banks.oneSentence, section.questionCount || 2);
-    items.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${item.question}`);
+    section.items.forEach((item, idx) => {
+      lines.push(`${idx + 1}) ${item.question || item.stem || item.statement}`);
     });
     lines.push("");
   });
@@ -567,19 +614,13 @@ function buildPaper({
   return lines.join("\n");
 }
 
-function buildAnswerKey({
+function buildAnswerKeyFromGenerated({
   title,
   className,
   subject,
   totalMarks,
-  testPaperPattern,
-  lessonSummary,
-  keywords,
+  generatedSections,
 }) {
-  const topicHints = extractTopicHints(subject, lessonSummary, keywords);
-  const banks = buildQuestionBanks(topicHints);
-  const sections = parseSampleLikeSections(testPaperPattern, totalMarks, 0);
-
   const lines = [];
 
   lines.push(`${title || "Test Paper"} - Answer Key`);
@@ -593,14 +634,14 @@ function buildAnswerKey({
   lines.push("----------------------------------------");
   lines.push("");
 
-  sections.forEach((section, index) => {
+  generatedSections.forEach((section, index) => {
     const sectionLabel = `Q.${index + 1}`;
     const titleText = section.title || "Answer the following";
 
+    lines.push(`${sectionLabel} ${titleText}`);
+
     if (section.type === "mcq") {
-      lines.push(`${sectionLabel} ${titleText}`);
-      const items = takeCycled(banks.mcq, section.questionCount || 4);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) Correct Answer: ${item.answer}`);
       });
       lines.push("");
@@ -608,9 +649,7 @@ function buildAnswerKey({
     }
 
     if (section.type === "rw") {
-      lines.push(`${sectionLabel} ${titleText}`);
-      const items = takeCycled(banks.rw, section.questionCount || 3);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.answer}`);
       });
       lines.push("");
@@ -618,9 +657,7 @@ function buildAnswerKey({
     }
 
     if (section.type === "one") {
-      lines.push(`${sectionLabel} ${titleText}`);
-      const items = takeCycled(banks.oneSentence, section.questionCount || 2);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.answer}`);
       });
       lines.push("");
@@ -628,10 +665,7 @@ function buildAnswerKey({
     }
 
     if (section.type === "reason") {
-      lines.push(`${sectionLabel} ${titleText}`);
-      const count = section.outOfCount || section.questionCount || 2;
-      const items = takeCycled(banks.reasons, count);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.answer}`);
       });
       lines.push("");
@@ -639,20 +673,15 @@ function buildAnswerKey({
     }
 
     if (section.type === "detail") {
-      lines.push(`${sectionLabel} ${titleText}`);
-      const count = section.outOfCount || section.questionCount || 3;
-      const items = takeCycled(banks.detail, count);
-      items.forEach((item, idx) => {
+      section.items.forEach((item, idx) => {
         lines.push(`${idx + 1}) ${item.answer}`);
       });
       lines.push("");
       return;
     }
 
-    lines.push(`${sectionLabel} ${titleText}`);
-    const items = takeCycled(banks.oneSentence, section.questionCount || 2);
-    items.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${item.answer}`);
+    section.items.forEach((item, idx) => {
+      lines.push(`${idx + 1}) ${item.answer || item.question || item.stem || item.statement}`);
     });
     lines.push("");
   });
@@ -718,24 +747,28 @@ Keywords:
 ${keywords || "-"}
 `.trim();
 
-    const paper = buildPaper({
-      title,
-      className,
-      subject,
-      totalMarks,
-      testPaperPattern,
-      lessonSummary,
-      keywords,
+    const topicHints = extractTopicHints(subject, lessonSummary, keywords);
+    const banks = buildQuestionBanks(topicHints);
+    const parsedSections = parseSampleLikeSections(testPaperPattern, totalMarks, questionCount);
+    const generatedSections = generateSectionsWithItems({
+      sections: parsedSections,
+      banks,
     });
 
-    const answerKey = buildAnswerKey({
+    const paper = buildPaperFromGenerated({
       title,
       className,
       subject,
       totalMarks,
-      testPaperPattern,
-      lessonSummary,
-      keywords,
+      generatedSections,
+    });
+
+    const answerKey = buildAnswerKeyFromGenerated({
+      title,
+      className,
+      subject,
+      totalMarks,
+      generatedSections,
     });
 
     return NextResponse.json({

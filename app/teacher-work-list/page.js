@@ -63,6 +63,8 @@ export default function TeacherWorkListPage() {
   const [works, setWorks] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -101,6 +103,7 @@ export default function TeacherWorkListPage() {
 
   async function fetchWorks() {
     setLoading(true);
+    setError("");
 
     try {
       let query = supabase
@@ -108,14 +111,12 @@ export default function TeacherWorkListPage() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      // filter only if teacherId exists
       if (teacherId) {
         query = query.eq("teacher_id", teacherId);
       }
 
       let { data, error } = await query;
 
-      // fallback: if no rows found by teacher_id, try teacher_name
       if ((!data || data.length === 0) && teacherName) {
         const fallback = await supabase
           .from("works")
@@ -129,12 +130,14 @@ export default function TeacherWorkListPage() {
 
       if (error) {
         console.log("FETCH WORKS ERROR:", error);
+        setError(error.message || "Failed to load works.");
         setWorks([]);
       } else {
         setWorks(data || []);
       }
     } catch (error) {
       console.log("FETCH WORKS CATCH ERROR:", error);
+      setError("Failed to load works.");
       setWorks([]);
     } finally {
       setLoading(false);
@@ -146,25 +149,65 @@ export default function TeacherWorkListPage() {
   }
 
   async function handleDeleteWork(workId) {
-    const ok = window.confirm("Are you sure you want to delete this work?");
+    const ok = window.confirm(
+      "Are you sure you want to permanently delete this work?"
+    );
+
     if (!ok) return;
 
-    try {
-      const { error } = await supabase.from("works").delete().eq("id", workId);
+    setDeletingId(workId);
+    setError("");
 
-      if (error) {
-        alert(error.message || "Failed to delete work.");
-        return;
+    try {
+      const { data: existingRow, error: readError } = await supabase
+        .from("works")
+        .select("id")
+        .eq("id", workId)
+        .maybeSingle();
+
+      if (readError) {
+        throw readError;
       }
 
-      setWorks((prev) => prev.filter((item) => item.id !== workId));
+      if (!existingRow) {
+        throw new Error("Work not found in database.");
+      }
+
+      const { error: deleteError } = await supabase
+        .from("works")
+        .delete()
+        .eq("id", workId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      const { data: verifyRow, error: verifyError } = await supabase
+        .from("works")
+        .select("id")
+        .eq("id", workId)
+        .maybeSingle();
+
+      if (verifyError) {
+        throw verifyError;
+      }
+
+      if (verifyRow) {
+        throw new Error("Delete did not complete. Record still exists.");
+      }
 
       if (expandedId === workId) {
         setExpandedId(null);
       }
+
+      await fetchWorks();
+      alert("Work deleted permanently.");
     } catch (error) {
       console.log("DELETE WORK ERROR:", error);
-      alert("Failed to delete work.");
+      setError(error.message || "Failed to delete work permanently.");
+      alert(error.message || "Failed to delete work permanently.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -203,6 +246,12 @@ export default function TeacherWorkListPage() {
                 </button>
               </div>
 
+              {error ? (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                  {error}
+                </div>
+              ) : null}
+
               {loading ? (
                 <p className="text-gray-600">Loading works...</p>
               ) : works.length === 0 ? (
@@ -212,6 +261,7 @@ export default function TeacherWorkListPage() {
                   {works.map((work) => {
                     const typeLabel = formatType(work?.type);
                     const answerKeyText = getAnswerKeyText(work);
+                    const isDeleting = deletingId === work.id;
 
                     return (
                       <div
@@ -253,9 +303,10 @@ export default function TeacherWorkListPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteWork(work.id)}
-                              className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
+                              disabled={isDeleting}
+                              className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
                             >
-                              Delete
+                              {isDeleting ? "Deleting..." : "Delete"}
                             </button>
                           </div>
                         </div>

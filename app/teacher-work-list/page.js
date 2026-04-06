@@ -54,6 +54,99 @@ function getAnswerKeyText(work) {
   );
 }
 
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildPrintableHtml(work) {
+  const title = escapeHtml(work?.title || "Test Paper");
+  const className = escapeHtml(work?.class_name || "-");
+  const subject = escapeHtml(getSubjectLabel(work));
+  const dueDate = escapeHtml(formatDate(work?.due_date));
+  const totalMarks = escapeHtml(
+    work?.total_marks !== null && work?.total_marks !== undefined
+      ? String(work.total_marks)
+      : "-"
+  );
+  const questionCount = escapeHtml(
+    work?.question_count !== null && work?.question_count !== undefined
+      ? String(work.question_count)
+      : "-"
+  );
+  const questionPaper = escapeHtml(getQuestionPaperText(work)).replace(/\n/g, "<br>");
+
+  return `
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            color: #111827;
+            margin: 32px;
+            line-height: 1.5;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 24px;
+          }
+          .header h1 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+          }
+          .meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 24px;
+            margin-bottom: 20px;
+            font-size: 14px;
+          }
+          .paper-box {
+            border: 1px solid #d1d5db;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 15px;
+          }
+          .label {
+            font-weight: 700;
+          }
+          @media print {
+            body {
+              margin: 16px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${title}</h1>
+        </div>
+
+        <div class="meta">
+          <div><span class="label">Class:</span> ${className}</div>
+          <div><span class="label">Subject:</span> ${subject}</div>
+          <div><span class="label">Date:</span> ${dueDate}</div>
+          <div><span class="label">Total Marks:</span> ${totalMarks}</div>
+          <div><span class="label">Question Count:</span> ${questionCount}</div>
+        </div>
+
+        <div class="paper-box">
+          ${questionPaper}
+        </div>
+
+        <script>
+          window.onload = function () {
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 export default function TeacherWorkListPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
   const [teacherId, setTeacherId] = useState("");
@@ -146,6 +239,25 @@ export default function TeacherWorkListPage() {
 
   function toggleExpand(id) {
     setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  function handlePrintWork(work) {
+    try {
+      const printWindow = window.open("", "_blank", "width=900,height=700");
+
+      if (!printWindow) {
+        alert("Popup blocked. Please allow popups and try again.");
+        return;
+      }
+
+      const html = buildPrintableHtml(work);
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) {
+      console.log("PRINT ERROR:", error);
+      alert("Failed to open print view.");
+    }
   }
 
   async function handleDeleteWork(workId) {
@@ -262,6 +374,8 @@ export default function TeacherWorkListPage() {
                     const typeLabel = formatType(work?.type);
                     const answerKeyText = getAnswerKeyText(work);
                     const isDeleting = deletingId === work.id;
+                    const isTestPaper =
+                      String(work?.type || "").toLowerCase() === "test_paper";
 
                     return (
                       <div
@@ -299,6 +413,16 @@ export default function TeacherWorkListPage() {
                             >
                               {expandedId === work.id ? "Hide" : "View"}
                             </button>
+
+                            {isTestPaper ? (
+                              <button
+                                type="button"
+                                onClick={() => handlePrintWork(work)}
+                                className="rounded-xl bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
+                              >
+                                Print
+                              </button>
+                            ) : null}
 
                             <button
                               type="button"

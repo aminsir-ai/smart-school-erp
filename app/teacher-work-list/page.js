@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 
+const SCHOOL_NAME = "Your School Name";
+
 function formatDate(value) {
   if (!value) return "-";
 
@@ -61,7 +63,11 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
-function buildPrintableHtml(work) {
+function buildPrintableHtml({
+  schoolName,
+  work,
+  mode = "paper",
+}) {
   const title = escapeHtml(work?.title || "Test Paper");
   const className = escapeHtml(work?.class_name || "-");
   const subject = escapeHtml(getSubjectLabel(work));
@@ -76,43 +82,70 @@ function buildPrintableHtml(work) {
       ? String(work.question_count)
       : "-"
   );
-  const questionPaper = escapeHtml(getQuestionPaperText(work)).replace(/\n/g, "<br>");
+
+  const bodyText =
+    mode === "answer_key"
+      ? getAnswerKeyText(work)
+      : getQuestionPaperText(work);
+
+  const printableTitle =
+    mode === "answer_key"
+      ? `${title} - Answer Key`
+      : title;
+
+  const printableContent = escapeHtml(bodyText).replace(/\n/g, "<br>");
 
   return `
     <html>
       <head>
-        <title>${title}</title>
+        <title>${printableTitle}</title>
         <style>
           body {
             font-family: Arial, sans-serif;
             color: #111827;
-            margin: 32px;
+            margin: 28px;
             line-height: 1.5;
           }
-          .header {
+
+          .school-name {
             text-align: center;
-            margin-bottom: 24px;
-          }
-          .header h1 {
-            margin: 0 0 8px 0;
             font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
           }
-          .meta {
+
+          .paper-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 18px;
+          }
+
+          .meta-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px 24px;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             font-size: 14px;
           }
-          .paper-box {
-            border: 1px solid #d1d5db;
-            padding: 16px;
-            border-radius: 8px;
-            font-size: 15px;
+
+          .meta-item {
+            padding: 2px 0;
           }
+
           .label {
             font-weight: 700;
           }
+
+          .content-box {
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 15px;
+            white-space: normal;
+            word-break: break-word;
+          }
+
           @media print {
             body {
               margin: 16px;
@@ -121,20 +154,19 @@ function buildPrintableHtml(work) {
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1>${title}</h1>
+        <div class="school-name">${escapeHtml(schoolName)}</div>
+        <div class="paper-title">${printableTitle}</div>
+
+        <div class="meta-grid">
+          <div class="meta-item"><span class="label">Class:</span> ${className}</div>
+          <div class="meta-item"><span class="label">Subject:</span> ${subject}</div>
+          <div class="meta-item"><span class="label">Date:</span> ${dueDate}</div>
+          <div class="meta-item"><span class="label">Total Marks:</span> ${totalMarks}</div>
+          <div class="meta-item"><span class="label">Question Count:</span> ${questionCount}</div>
         </div>
 
-        <div class="meta">
-          <div><span class="label">Class:</span> ${className}</div>
-          <div><span class="label">Subject:</span> ${subject}</div>
-          <div><span class="label">Date:</span> ${dueDate}</div>
-          <div><span class="label">Total Marks:</span> ${totalMarks}</div>
-          <div><span class="label">Question Count:</span> ${questionCount}</div>
-        </div>
-
-        <div class="paper-box">
-          ${questionPaper}
+        <div class="content-box">
+          ${printableContent}
         </div>
 
         <script>
@@ -241,7 +273,7 @@ export default function TeacherWorkListPage() {
     setExpandedId((prev) => (prev === id ? null : id));
   }
 
-  function handlePrintWork(work) {
+  function openPrintWindow(work, mode = "paper") {
     try {
       const printWindow = window.open("", "_blank", "width=900,height=700");
 
@@ -250,7 +282,12 @@ export default function TeacherWorkListPage() {
         return;
       }
 
-      const html = buildPrintableHtml(work);
+      const html = buildPrintableHtml({
+        schoolName: SCHOOL_NAME,
+        work,
+        mode,
+      });
+
       printWindow.document.open();
       printWindow.document.write(html);
       printWindow.document.close();
@@ -415,13 +452,23 @@ export default function TeacherWorkListPage() {
                             </button>
 
                             {isTestPaper ? (
-                              <button
-                                type="button"
-                                onClick={() => handlePrintWork(work)}
-                                className="rounded-xl bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
-                              >
-                                Print
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openPrintWindow(work, "paper")}
+                                  className="rounded-xl bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
+                                >
+                                  Print Paper
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openPrintWindow(work, "answer_key")}
+                                  className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-200"
+                                >
+                                  Print Answer Key
+                                </button>
+                              </>
                             ) : null}
 
                             <button

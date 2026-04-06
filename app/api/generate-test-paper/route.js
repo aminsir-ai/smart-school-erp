@@ -28,6 +28,36 @@ function cleanText(text) {
     .trim();
 }
 
+function titleCase(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function splitPatternLines(patternText) {
+  return String(patternText || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function detectQuestionType(line) {
+  const text = String(line || "").toLowerCase();
+
+  if (text.includes("correct option")) return "mcq";
+  if (text.includes("right or wrong")) return "rw";
+  if (text.includes("true or false")) return "rw";
+  if (text.includes("one sentence")) return "one";
+  if (text.includes("geographical reason")) return "reason";
+  if (text.includes("answer in detail")) return "detail";
+  if (text.includes("short answer")) return "short";
+  if (text.includes("subjective")) return "subjective";
+  if (text.includes("objective")) return "mcq";
+
+  return "general";
+}
+
 function extractTopicHints(subject, lessonSummary, keywords) {
   const source = `${subject} ${lessonSummary} ${keywords}`.toLowerCase();
   const hints = [];
@@ -436,12 +466,7 @@ function parseSampleLikeSections(patternText, totalMarks, questionCount) {
   return sections;
 }
 
-function formatHeader({
-  title,
-  className,
-  subject,
-  totalMarks,
-}) {
+function formatHeader({ title, className, subject, totalMarks }) {
   return `${title || "Test No. 1"}
 
 Std: ${className || "-"}
@@ -471,8 +496,6 @@ function buildPaper({
   lines.push("----------------------------------------");
   lines.push("");
 
-  let serial = 1;
-
   sections.forEach((section, index) => {
     const sectionLabel = `Q.${index + 1}`;
     const titleText = section.title || "Answer the following";
@@ -486,7 +509,6 @@ function buildPaper({
         lines.push(`   (a) ${item.options[0]}  (b) ${item.options[1]}  (c) ${item.options[2]}  (d) ${item.options[3]}`);
       });
       lines.push("");
-      serial += items.length;
       return;
     }
 
@@ -497,7 +519,6 @@ function buildPaper({
         lines.push(`${idx + 1}) ${item.statement} ______`);
       });
       lines.push("");
-      serial += items.length;
       return;
     }
 
@@ -508,7 +529,6 @@ function buildPaper({
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
-      serial += items.length;
       return;
     }
 
@@ -521,7 +541,6 @@ function buildPaper({
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
-      serial += items.length;
       return;
     }
 
@@ -534,7 +553,6 @@ function buildPaper({
         lines.push(`${idx + 1}) ${item.question}`);
       });
       lines.push("");
-      serial += items.length;
       return;
     }
 
@@ -544,7 +562,6 @@ function buildPaper({
       lines.push(`${idx + 1}) ${item.question}`);
     });
     lines.push("");
-    serial += items.length;
   });
 
   return lines.join("\n");

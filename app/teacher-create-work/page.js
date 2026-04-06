@@ -5,6 +5,8 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
+const PERMANENT_SCHOOL_NAME = "United English School, Morba";
+
 const CLASS_OPTIONS = [
   "3rd",
   "4th",
@@ -83,6 +85,12 @@ export default function TeacherCreateWorkPage() {
   const [questionCount, setQuestionCount] = useState(10);
   const [testPaperPattern, setTestPaperPattern] = useState("");
 
+  const [schoolName] = useState(PERMANENT_SCHOOL_NAME);
+  const [chapterName, setChapterName] = useState("");
+  const [examTime, setExamTime] = useState("1 Hour");
+  const [examDate, setExamDate] = useState(formatDateForInput(new Date()));
+  const [teacherSignatureName, setTeacherSignatureName] = useState("");
+
   const [lessonFiles, setLessonFiles] = useState([]);
   const [uploadedLessonFiles, setUploadedLessonFiles] = useState([]);
   const [questionFile, setQuestionFile] = useState(null);
@@ -115,6 +123,7 @@ export default function TeacherCreateWorkPage() {
 
       setTeacherName(user.name || "Teacher");
       setTeacherId(user.id || user.teacher_id || user.email || null);
+      setTeacherSignatureName(user.name || "");
       setIsAllowed(true);
     } catch (err) {
       console.error("USER PARSE ERROR:", err);
@@ -242,6 +251,11 @@ export default function TeacherCreateWorkPage() {
           testPaperPattern,
           lessonFileUrls,
           lessonTexts: [],
+          schoolName,
+          chapterName,
+          examTime,
+          examDate,
+          teacherSignatureName,
         }),
       });
 
@@ -334,7 +348,7 @@ export default function TeacherCreateWorkPage() {
       const insertPayload = {
         title: title.trim(),
         class_name: selectedClass,
-        subject: subject,
+        subject,
         type: workType,
         question: finalQuestionText,
         question_text: finalQuestionText,
@@ -357,10 +371,15 @@ export default function TeacherCreateWorkPage() {
         generated_answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
         answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
         lesson_files: lessonFilesToSave,
+
+        school_name: workType === "test_paper" ? schoolName : "",
+        chapter_name: workType === "test_paper" ? chapterName || "" : "",
+        exam_time: workType === "test_paper" ? examTime || "" : "",
+        exam_date: workType === "test_paper" ? examDate || null : null,
+        teacher_signature_name: workType === "test_paper" ? teacherSignatureName || "" : "",
+
         created_at: new Date().toISOString(),
       };
-
-      console.log("INSERT PAYLOAD:", insertPayload);
 
       const { data: insertedRow, error: insertError } = await supabase
         .from("works")
@@ -375,8 +394,6 @@ export default function TeacherCreateWorkPage() {
       if (!insertedRow || !insertedRow.id) {
         throw new Error("Work save failed. No row was returned from database.");
       }
-
-      console.log("INSERTED WORK ROW:", insertedRow);
 
       setMessage(
         workType === "test_paper"
@@ -394,6 +411,9 @@ export default function TeacherCreateWorkPage() {
       setGeneratedPaper("");
       setGeneratedAnswerKey("");
       setTestPaperPattern("");
+      setChapterName("");
+      setExamTime("1 Hour");
+      setExamDate(formatDateForInput(new Date()));
 
       const questionInput = document.getElementById("question-file-input");
       const modelAnswerInput = document.getElementById("model-answer-file-input");
@@ -427,6 +447,9 @@ export default function TeacherCreateWorkPage() {
     setUploadedLessonFiles([]);
     setMessage("");
     setError("");
+    setChapterName("");
+    setExamTime("1 Hour");
+    setExamDate(formatDateForInput(new Date()));
 
     const questionInput = document.getElementById("question-file-input");
     const modelAnswerInput = document.getElementById("model-answer-file-input");
@@ -557,6 +580,77 @@ export default function TeacherCreateWorkPage() {
                   <>
                     <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
                       <h2 className="text-lg font-bold text-gray-800 mb-4">
+                        Test Paper Header
+                      </h2>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            School Name
+                          </label>
+                          <input
+                            type="text"
+                            value={schoolName}
+                            readOnly
+                            className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-gray-700"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Chapter
+                          </label>
+                          <input
+                            type="text"
+                            value={chapterName}
+                            onChange={(e) => setChapterName(e.target.value)}
+                            placeholder="Enter chapter name"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Time
+                          </label>
+                          <input
+                            type="text"
+                            value={examTime}
+                            onChange={(e) => setExamTime(e.target.value)}
+                            placeholder="e.g. 1 Hour"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Exam Date
+                          </label>
+                          <input
+                            type="date"
+                            value={examDate}
+                            onChange={(e) => setExamDate(e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Teacher Signature Name
+                          </label>
+                          <input
+                            type="text"
+                            value={teacherSignatureName}
+                            onChange={(e) => setTeacherSignatureName(e.target.value)}
+                            placeholder="Teacher signature name"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
+                      <h2 className="text-lg font-bold text-gray-800 mb-4">
                         Test Paper Settings
                       </h2>
 
@@ -676,14 +770,10 @@ export default function TeacherCreateWorkPage() {
 Choose the correct options and rewrite the sentences. 4 marks 4 questions
 Are the sentences Right or Wrong? 3 marks 3 questions
 Answer the following questions in one sentence each. 2 marks 2 questions
-Give geographical reasons (Any 1) from given 2 questions. 3 marks
-Answer in detail (Any 2) from given 3 questions. 8 marks`}
+Give geographical reasons (Any 1) from 2 questions. 3 marks
+Answer in detail (Any 2) from 3 questions. 8 marks`}
                           className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
                         />
-                        <p className="mt-2 text-xs text-gray-500">
-                          This typed pattern will be used together with uploaded lesson files
-                          while generating the test paper.
-                        </p>
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-3">

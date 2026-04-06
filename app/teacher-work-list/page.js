@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 
-const SCHOOL_NAME = "Your School Name";
+const SCHOOL_NAME_FALLBACK = "United English School, Morba";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -63,15 +63,11 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
-function buildPrintableHtml({
-  schoolName,
-  work,
-  mode = "paper",
-}) {
+function buildPrintableHtml({ work, mode = "paper" }) {
+  const schoolName = escapeHtml(work?.school_name || SCHOOL_NAME_FALLBACK);
   const title = escapeHtml(work?.title || "Test Paper");
   const className = escapeHtml(work?.class_name || "-");
   const subject = escapeHtml(getSubjectLabel(work));
-  const dueDate = escapeHtml(formatDate(work?.due_date));
   const totalMarks = escapeHtml(
     work?.total_marks !== null && work?.total_marks !== undefined
       ? String(work.total_marks)
@@ -82,6 +78,10 @@ function buildPrintableHtml({
       ? String(work.question_count)
       : "-"
   );
+  const chapterName = escapeHtml(work?.chapter_name || "-");
+  const examTime = escapeHtml(work?.exam_time || "1 Hour");
+  const examDate = escapeHtml(formatDate(work?.exam_date || work?.due_date));
+  const teacherSignatureName = escapeHtml(work?.teacher_signature_name || "");
 
   const bodyText =
     mode === "answer_key"
@@ -89,9 +89,7 @@ function buildPrintableHtml({
       : getQuestionPaperText(work);
 
   const printableTitle =
-    mode === "answer_key"
-      ? `${title} - Answer Key`
-      : title;
+    mode === "answer_key" ? `${title} - Answer Key` : title;
 
   const printableContent = escapeHtml(bodyText).replace(/\n/g, "<br>");
 
@@ -106,21 +104,18 @@ function buildPrintableHtml({
             margin: 28px;
             line-height: 1.5;
           }
-
           .school-name {
             text-align: center;
             font-size: 24px;
             font-weight: 700;
             margin-bottom: 8px;
           }
-
           .paper-title {
             text-align: center;
             font-size: 20px;
             font-weight: 700;
             margin-bottom: 18px;
           }
-
           .meta-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -128,15 +123,12 @@ function buildPrintableHtml({
             margin-bottom: 18px;
             font-size: 14px;
           }
-
           .meta-item {
             padding: 2px 0;
           }
-
           .label {
             font-weight: 700;
           }
-
           .content-box {
             border: 1px solid #d1d5db;
             border-radius: 8px;
@@ -145,7 +137,18 @@ function buildPrintableHtml({
             white-space: normal;
             word-break: break-word;
           }
-
+          .signature {
+            margin-top: 40px;
+            display: flex;
+            justify-content: flex-end;
+            font-size: 14px;
+          }
+          .signature-line {
+            min-width: 220px;
+            text-align: center;
+            border-top: 1px solid #111827;
+            padding-top: 6px;
+          }
           @media print {
             body {
               margin: 16px;
@@ -154,19 +157,27 @@ function buildPrintableHtml({
         </style>
       </head>
       <body>
-        <div class="school-name">${escapeHtml(schoolName)}</div>
+        <div class="school-name">${schoolName}</div>
         <div class="paper-title">${printableTitle}</div>
 
         <div class="meta-grid">
           <div class="meta-item"><span class="label">Class:</span> ${className}</div>
           <div class="meta-item"><span class="label">Subject:</span> ${subject}</div>
-          <div class="meta-item"><span class="label">Date:</span> ${dueDate}</div>
+          <div class="meta-item"><span class="label">Chapter:</span> ${chapterName}</div>
+          <div class="meta-item"><span class="label">Time:</span> ${examTime}</div>
+          <div class="meta-item"><span class="label">Date:</span> ${examDate}</div>
           <div class="meta-item"><span class="label">Total Marks:</span> ${totalMarks}</div>
           <div class="meta-item"><span class="label">Question Count:</span> ${questionCount}</div>
         </div>
 
         <div class="content-box">
           ${printableContent}
+        </div>
+
+        <div class="signature">
+          <div class="signature-line">
+            ${teacherSignatureName || "Teacher Signature"}
+          </div>
         </div>
 
         <script>
@@ -282,11 +293,7 @@ export default function TeacherWorkListPage() {
         return;
       }
 
-      const html = buildPrintableHtml({
-        schoolName: SCHOOL_NAME,
-        work,
-        mode,
-      });
+      const html = buildPrintableHtml({ work, mode });
 
       printWindow.document.open();
       printWindow.document.write(html);

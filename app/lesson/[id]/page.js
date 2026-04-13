@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -59,7 +60,8 @@ function LessonSection({ title, content, bgClass = "bg-white" }) {
   );
 }
 
-export default function LessonDetailPage({ params }) {
+export default function LessonDetailPage() {
+  const params = useParams();
   const lessonId = params?.id;
 
   const [studentName, setStudentName] = useState("Student");
@@ -97,7 +99,9 @@ export default function LessonDetailPage({ params }) {
   }, []);
 
   useEffect(() => {
-    if (!isAllowed || !lessonId) return;
+    if (!isAllowed) return;
+    if (!lessonId) return;
+
     fetchLesson();
   }, [isAllowed, lessonId]);
 
@@ -116,18 +120,21 @@ export default function LessonDetailPage({ params }) {
         console.log("FETCH LESSON DETAIL ERROR:", error);
         setErrorMessage("Lesson not found.");
         setLesson(null);
+        setLoading(false);
         return;
       }
 
       if (!data || !isValidLessonPack(data)) {
         setErrorMessage("This lesson is not available.");
         setLesson(null);
+        setLoading(false);
         return;
       }
 
       if (className && data.class_name && data.class_name !== className) {
         setErrorMessage("This lesson is not assigned to your class.");
         setLesson(null);
+        setLoading(false);
         return;
       }
 

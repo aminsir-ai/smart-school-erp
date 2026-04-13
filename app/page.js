@@ -106,7 +106,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-4 inline-flex rounded-full border border-blue-200 bg-white px-5 py-3 shadow-sm">
           <span className="text-sm font-bold text-slate-800 sm:text-base">
-            United English School, Morba
+            For Class 9th & 10th Students
           </span>
         </div>
 

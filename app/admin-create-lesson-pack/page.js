@@ -1,0 +1,451 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Header from "@/app/components/Header";
+import Sidebar from "@/app/components/Sidebar";
+import { supabase } from "@/lib/supabase";
+
+const CLASS_OPTIONS = ["9th", "10th"];
+const SUBJECT_OPTIONS = ["Science", "Maths", "History", "Geography", "English"];
+
+export default function AdminCreateLessonPackPage() {
+  const [adminName, setAdminName] = useState("Admin");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  const [className, setClassName] = useState("10th");
+  const [subject, setSubject] = useState("Science");
+  const [chapterName, setChapterName] = useState("");
+  const [title, setTitle] = useState("");
+
+  const [simpleExplanation, setSimpleExplanation] = useState("");
+  const [lessonSummary, setLessonSummary] = useState("");
+  const [quickRevision, setQuickRevision] = useState("");
+  const [previousYearInsights, setPreviousYearInsights] = useState("");
+  const [importantQuestions, setImportantQuestions] = useState("");
+  const [practiceQuestions, setPracticeQuestions] = useState("");
+  const [audioLink, setAudioLink] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("erp_user");
+
+    if (!storedUser) {
+      window.location.href = "/login";
+      return;
+    }
+
+    try {
+      const user = JSON.parse(storedUser);
+
+      if (!user || (user.role !== "admin" && user.role !== "teacher")) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setAdminName(user?.name || "Admin");
+    } catch (error) {
+      console.log("ADMIN CREATE LESSON PACK AUTH ERROR:", error);
+      localStorage.removeItem("erp_user");
+      window.location.href = "/login";
+      return;
+    } finally {
+      setCheckingAuth(false);
+    }
+  }, []);
+
+  function buildLessonContent() {
+    return `Simple Explanation:
+${simpleExplanation.trim()}
+
+Lesson Summary:
+${lessonSummary.trim()}
+
+Quick Revision:
+${quickRevision.trim()}
+
+Previous Year Question Insights:
+${previousYearInsights.trim()}
+
+Important Questions:
+${importantQuestions.trim()}
+
+Practice Questions:
+${practiceQuestions.trim()}
+
+Audio Link:
+${audioLink.trim()}`;
+  }
+
+  function validateForm() {
+    if (!className.trim()) return "Please select class.";
+    if (!subject.trim()) return "Please select subject.";
+    if (!chapterName.trim()) return "Please enter chapter name.";
+    if (!title.trim()) return "Please enter lesson title.";
+    if (!simpleExplanation.trim()) return "Please enter simple explanation.";
+    if (!lessonSummary.trim()) return "Please enter lesson summary.";
+    if (!quickRevision.trim()) return "Please enter quick revision.";
+    if (!importantQuestions.trim()) return "Please enter important questions.";
+    if (!practiceQuestions.trim()) return "Please enter practice questions.";
+    return "";
+  }
+
+  async function handleSaveLessonPack(e) {
+    e.preventDefault();
+    setMessage("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const combinedLessonText = buildLessonContent();
+
+      const payload = {
+        title: title.trim(),
+        question: combinedLessonText,
+        model_answer: lessonSummary.trim(),
+        type: "lesson_pack",
+        class_name: className.trim(),
+        subject_name: subject.trim(),
+        subject: subject.trim(),
+        teacher_name: adminName,
+        due_date: null,
+        teacher_id: null,
+        question_file_url: null,
+        question_file_name: null,
+        model_answer_file_url: null,
+        model_answer_file_name: null,
+        lesson_file_urls: null,
+        lesson_file_names: null,
+        paper_mode: null,
+        total_marks: null,
+        question_count: null,
+        difficulty_level: null,
+        ai_generated: true,
+        generated_paper_text: combinedLessonText,
+        generated_answer_key: `Lesson Pack Summary:\n${lessonSummary.trim()}`,
+        keyword: chapterName.trim(),
+      };
+
+      const { error } = await supabase.from("works").insert([payload]);
+
+      if (error) {
+        console.log("SAVE LESSON PACK ERROR:", error);
+        setMessage(`Failed to save lesson pack: ${error.message}`);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Lesson pack created successfully.");
+
+      setChapterName("");
+      setTitle("");
+      setSimpleExplanation("");
+      setLessonSummary("");
+      setQuickRevision("");
+      setPreviousYearInsights("");
+      setImportantQuestions("");
+      setPracticeQuestions("");
+      setAudioLink("");
+    } catch (error) {
+      console.log("UNEXPECTED SAVE LESSON PACK ERROR:", error);
+      setMessage("Something went wrong while saving lesson pack.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100">
+        <div className="rounded-2xl bg-white px-6 py-4 text-sm font-semibold text-slate-700 shadow">
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Header name={adminName} />
+
+      <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
+        <Sidebar role="admin" />
+
+        <div className="flex-1 p-4 sm:p-6">
+          <div className="mx-auto max-w-6xl space-y-6">
+            <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
+              <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 text-white sm:p-8">
+                  <div className="mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white/95">
+                    AI Study Assistant
+                  </div>
+
+                  <h1 className="text-3xl font-extrabold sm:text-4xl">
+                    Create Lesson Pack
+                  </h1>
+
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
+                    Create structured study content for Class 9th and 10th students.
+                    This lesson pack will appear inside the student learning dashboard.
+                  </p>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <h3 className="text-lg font-bold">Simple Learning</h3>
+                      <p className="mt-1 text-sm text-white/85">
+                        Add easy explanation and summary for students.
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <h3 className="text-lg font-bold">Exam Preparation</h3>
+                      <p className="mt-1 text-sm text-white/85">
+                        Add PYQ insights, revision, and important questions.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 sm:p-8">
+                  <h2 className="text-2xl font-extrabold text-slate-900">
+                    What gets saved
+                  </h2>
+
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-2xl bg-blue-50 p-4 text-sm text-slate-700">
+                      Type will be saved as <span className="font-bold">lesson_pack</span>
+                    </div>
+
+                    <div className="rounded-2xl bg-violet-50 p-4 text-sm text-slate-700">
+                      Content will be stored in structured section format
+                    </div>
+
+                    <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-slate-700">
+                      Student dashboard will read these records directly
+                    </div>
+
+                    <div className="rounded-2xl bg-amber-50 p-4 text-sm text-slate-700">
+                      Best for chapter explanation, revision, and practice
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-6">
+                <h2 className="text-2xl font-extrabold text-slate-900">
+                  Lesson Pack Form
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Fill the chapter content carefully. This will become the student-facing lesson.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveLessonPack} className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Class
+                    </label>
+                    <select
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                    >
+                      {CLASS_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Subject
+                    </label>
+                    <select
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                    >
+                      {SUBJECT_OPTIONS.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Chapter Name
+                    </label>
+                    <input
+                      type="text"
+                      value={chapterName}
+                      onChange={(e) => setChapterName(e.target.value)}
+                      placeholder="Ex. Light Reflection"
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Lesson Title
+                    </label>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Ex. Light Reflection and Refraction"
+                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Simple Explanation
+                  </label>
+                  <textarea
+                    value={simpleExplanation}
+                    onChange={(e) => setSimpleExplanation(e.target.value)}
+                    rows={6}
+                    placeholder="Write the lesson in easy student-friendly language..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Lesson Summary
+                  </label>
+                  <textarea
+                    value={lessonSummary}
+                    onChange={(e) => setLessonSummary(e.target.value)}
+                    rows={5}
+                    placeholder="Short chapter summary for quick understanding..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Quick Revision
+                  </label>
+                  <textarea
+                    value={quickRevision}
+                    onChange={(e) => setQuickRevision(e.target.value)}
+                    rows={5}
+                    placeholder="Add important revision points, formulas, keywords, dates, definitions..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Previous Year Question Insights
+                  </label>
+                  <textarea
+                    value={previousYearInsights}
+                    onChange={(e) => setPreviousYearInsights(e.target.value)}
+                    rows={5}
+                    placeholder="Write lesson-wise previous year question pattern or important repeated areas..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Important Questions
+                  </label>
+                  <textarea
+                    value={importantQuestions}
+                    onChange={(e) => setImportantQuestions(e.target.value)}
+                    rows={5}
+                    placeholder="Add important exam questions..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Practice Questions
+                  </label>
+                  <textarea
+                    value={practiceQuestions}
+                    onChange={(e) => setPracticeQuestions(e.target.value)}
+                    rows={5}
+                    placeholder="Add chapter-based practice questions for students..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Audio Link
+                  </label>
+                  <input
+                    type="text"
+                    value={audioLink}
+                    onChange={(e) => setAudioLink(e.target.value)}
+                    placeholder="Paste audio explanation link if available"
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Preview Format
+                  </h3>
+                  <pre className="mt-3 whitespace-pre-wrap rounded-2xl bg-white p-4 text-xs leading-6 text-slate-700">
+{buildLessonContent()}
+                  </pre>
+                </div>
+
+                {message ? (
+                  <div
+                    className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
+                      message.toLowerCase().includes("success")
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {message}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {saving ? "Saving Lesson Pack..." : "Save Lesson Pack"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => (window.location.href = "/admin-dashboard")}
+                    className="rounded-2xl bg-slate-200 px-6 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-300"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

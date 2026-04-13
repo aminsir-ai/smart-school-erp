@@ -1,52 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
 const PERMANENT_SCHOOL_NAME = "United English School, Morba";
 
-const CLASS_OPTIONS = [
-  "3rd",
-  "4th",
-  "5th",
-  "6th",
-  "7th",
-  "8th",
-  "9th",
-  "10th",
-];
+const CLASS_OPTIONS = ["9th", "10th"];
 
 const SUBJECT_OPTIONS = [
-  "English",
-  "Hindi",
-  "Marathi",
-  "Maths",
   "Science",
-  "G. Science",
+  "Maths",
   "History",
   "Geography",
-  "Computer",
-];
-
-const WORK_TYPE_OPTIONS = [
-  { value: "homework", label: "Homework" },
-  { value: "classwork", label: "Classwork" },
-  { value: "quiz", label: "Quiz" },
-  { value: "test_paper", label: "Test Paper" },
-];
-
-const PAPER_MODE_OPTIONS = [
-  { value: "mixed", label: "Mixed" },
-  { value: "objective", label: "Objective" },
-  { value: "subjective", label: "Subjective" },
-];
-
-const DIFFICULTY_OPTIONS = [
-  { value: "easy", label: "Easy" },
-  { value: "medium", label: "Medium" },
-  { value: "hard", label: "Hard" },
+  "English",
 ];
 
 const QUESTION_BUCKET = "work-files";
@@ -61,47 +29,35 @@ function formatDateForInput(date) {
   return `${year}-${month}-${day}`;
 }
 
-function safeNumber(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
 export default function TeacherCreateWorkPage() {
-  const [teacherName, setTeacherName] = useState("Teacher");
-  const [teacherId, setTeacherId] = useState(null);
+  const [userName, setUserName] = useState("Admin");
+  const [userId, setUserId] = useState(null);
+  const [userRole, setUserRole] = useState("admin");
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const [workType, setWorkType] = useState("homework");
-  const [selectedClass, setSelectedClass] = useState("10th");
-  const [subject, setSubject] = useState("English");
-  const [title, setTitle] = useState("");
-  const [questionText, setQuestionText] = useState("");
-  const [keywords, setKeywords] = useState("");
-  const [dueDate, setDueDate] = useState(formatDateForInput(new Date()));
-
-  const [paperMode, setPaperMode] = useState("mixed");
-  const [difficulty, setDifficulty] = useState("medium");
-  const [totalMarks, setTotalMarks] = useState(20);
-  const [questionCount, setQuestionCount] = useState(10);
-  const [testPaperPattern, setTestPaperPattern] = useState("");
-
   const [schoolName] = useState(PERMANENT_SCHOOL_NAME);
+  const [selectedClass, setSelectedClass] = useState("10th");
+  const [subject, setSubject] = useState("Science");
   const [chapterName, setChapterName] = useState("");
-  const [examTime, setExamTime] = useState("1 Hour");
-  const [examDate, setExamDate] = useState(formatDateForInput(new Date()));
-  const [teacherSignatureName, setTeacherSignatureName] = useState("");
+  const [title, setTitle] = useState("");
+  const [keywords, setKeywords] = useState("");
+
+  const [simpleExplanation, setSimpleExplanation] = useState("");
+  const [lessonSummary, setLessonSummary] = useState("");
+  const [quickRevision, setQuickRevision] = useState("");
+  const [importantQuestions, setImportantQuestions] = useState("");
+  const [previousYearInsights, setPreviousYearInsights] = useState("");
+  const [practiceQuestions, setPracticeQuestions] = useState("");
+  const [audioLink, setAudioLink] = useState("");
+
+  const [dueDate, setDueDate] = useState(formatDateForInput(new Date()));
 
   const [lessonFiles, setLessonFiles] = useState([]);
   const [uploadedLessonFiles, setUploadedLessonFiles] = useState([]);
   const [questionFile, setQuestionFile] = useState(null);
   const [modelAnswerFile, setModelAnswerFile] = useState(null);
 
-  const [generatedPaper, setGeneratedPaper] = useState("");
-  const [generatedAnswerKey, setGeneratedAnswerKey] = useState("");
-
-  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
-
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -116,14 +72,21 @@ export default function TeacherCreateWorkPage() {
     try {
       const user = JSON.parse(storedUser);
 
-      if (!user || user.role !== "teacher") {
+      if (!user) {
         window.location.href = "/login";
         return;
       }
 
-      setTeacherName(user.name || "Teacher");
-      setTeacherId(user.id || user.teacher_id || user.email || null);
-      setTeacherSignatureName(user.name || "");
+      const allowedRoles = ["teacher", "admin", "management"];
+
+      if (!allowedRoles.includes(user.role)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setUserName(user.name || "Admin");
+      setUserId(user.id || user.teacher_id || null);
+      setUserRole(user.role || "admin");
       setIsAllowed(true);
     } catch (err) {
       console.error("USER PARSE ERROR:", err);
@@ -132,17 +95,12 @@ export default function TeacherCreateWorkPage() {
     }
   }, []);
 
-  const pageTitle = useMemo(() => {
-    const selected = WORK_TYPE_OPTIONS.find((item) => item.value === workType);
-    return selected ? `Create ${selected.label}` : "Create Work";
-  }, [workType]);
-
   function resetStatus() {
     setMessage("");
     setError("");
   }
 
-  async function uploadFileToBucket(file, bucketName, folderName = "teacher-work") {
+  async function uploadFileToBucket(file, bucketName, folderName = "lesson-pack-files") {
     if (!file) return { url: "", path: "", name: "" };
 
     const cleanFileName = `${Date.now()}-${Math.random()
@@ -174,7 +132,7 @@ export default function TeacherCreateWorkPage() {
     const uploaded = [];
 
     for (const file of files) {
-      const result = await uploadFileToBucket(file, LESSON_BUCKET, "lesson-files");
+      const result = await uploadFileToBucket(file, LESSON_BUCKET, "lesson-pack-files");
       uploaded.push({
         name: file.name,
         url: result.url,
@@ -214,113 +172,19 @@ export default function TeacherCreateWorkPage() {
     setLessonFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
   }
 
-  async function handleGenerateTestPaper() {
-    resetStatus();
-
-    if (lessonFiles.length === 0) {
-      setError("Please upload lesson files first.");
-      return;
-    }
-
-    setGenerating(true);
-
-    try {
-      const uploaded = await uploadMultipleLessonFiles(lessonFiles);
-      const lessonFileUrls = uploaded.map((file) => file.url).filter(Boolean);
-
-      if (lessonFileUrls.length === 0) {
-        throw new Error("Lesson files uploaded, but URLs were not created.");
-      }
-
-      setUploadedLessonFiles(uploaded);
-
-      const response = await fetch("/api/generate-test-paper", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paperMode,
-          totalMarks: safeNumber(totalMarks, 20),
-          questionCount: safeNumber(questionCount, 10),
-          difficulty,
-          className: selectedClass,
-          subject,
-          title,
-          keywords,
-          testPaperPattern,
-          lessonFileUrls,
-          lessonTexts: [],
-          schoolName,
-          chapterName,
-          examTime,
-          examDate,
-          teacherSignatureName,
-        }),
-      });
-
-      const rawText = await response.text();
-
-      let data = {};
-      try {
-        data = rawText ? JSON.parse(rawText) : {};
-      } catch (parseError) {
-        if (!response.ok) {
-          throw new Error(rawText || "Failed to generate test paper.");
-        }
-        throw new Error("Server returned invalid JSON response.");
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || rawText || "Failed to generate test paper.");
-      }
-
-      const paperText =
-        data?.generatedPaper ||
-        data?.paper ||
-        data?.questionPaper ||
-        data?.testPaper ||
-        "";
-
-      const answerKeyText =
-        data?.generatedAnswerKey ||
-        data?.answerKey ||
-        data?.modelAnswer ||
-        data?.markingGuide ||
-        "";
-
-      setGeneratedPaper(paperText);
-      setGeneratedAnswerKey(answerKeyText);
-
-      if (paperText && !questionText) {
-        setQuestionText(paperText);
-      }
-
-      setMessage("Test paper generated successfully.");
-    } catch (err) {
-      console.error("GENERATE TEST PAPER ERROR:", err);
-      setError(err.message || "Failed to generate test paper.");
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function handleSaveWork(event) {
+  async function handleSaveLessonPack(event) {
     event.preventDefault();
     resetStatus();
 
-    if (!selectedClass || !subject || !title) {
-      setError("Please fill title, class, and subject.");
+    if (!selectedClass || !subject || !chapterName.trim() || !title.trim()) {
+      setError("Please fill class, subject, chapter name, and title.");
       return;
     }
 
-    if (workType !== "test_paper" && !questionText && !questionFile) {
-      setError("Please enter question or upload question file.");
-      return;
-    }
-
-    if (workType === "test_paper" && !generatedPaper && !questionText && !questionFile) {
-      setError("Please generate test paper or upload question file first.");
+    if (!simpleExplanation.trim() && !lessonSummary.trim() && lessonFiles.length === 0) {
+      setError(
+        "Please add at least one of these: lesson files, simple explanation, or lesson summary."
+      );
       return;
     }
 
@@ -328,55 +192,75 @@ export default function TeacherCreateWorkPage() {
 
     try {
       const uploadedQuestion = questionFile
-        ? await uploadFileToBucket(questionFile, QUESTION_BUCKET, "question-files")
+        ? await uploadFileToBucket(questionFile, QUESTION_BUCKET, "previous-year-question-files")
         : { url: "", path: "", name: "" };
 
       const uploadedModelAnswer = modelAnswerFile
-        ? await uploadFileToBucket(modelAnswerFile, ANSWER_BUCKET, "model-answer-files")
+        ? await uploadFileToBucket(modelAnswerFile, ANSWER_BUCKET, "audio-or-support-files")
         : { url: "", path: "", name: "" };
 
-      const lessonFilesToSave = uploadedLessonFiles || [];
+      const uploadedLessons =
+        lessonFiles.length > 0
+          ? await uploadMultipleLessonFiles(lessonFiles)
+          : uploadedLessonFiles || [];
 
-      const finalQuestionText =
-        workType === "test_paper"
-          ? generatedPaper || questionText || ""
-          : questionText || "";
+      setUploadedLessonFiles(uploadedLessons);
 
-      const finalAnswerKeyText =
-        workType === "test_paper" ? generatedAnswerKey || "" : "";
+      const fullQuestionText = [
+        simpleExplanation?.trim()
+          ? `Simple Explanation:\n${simpleExplanation.trim()}`
+          : "",
+        lessonSummary?.trim()
+          ? `Lesson Summary:\n${lessonSummary.trim()}`
+          : "",
+        quickRevision?.trim()
+          ? `Quick Revision:\n${quickRevision.trim()}`
+          : "",
+        previousYearInsights?.trim()
+          ? `Previous Year Question Insights:\n${previousYearInsights.trim()}`
+          : "",
+        importantQuestions?.trim()
+          ? `Important Questions:\n${importantQuestions.trim()}`
+          : "",
+        practiceQuestions?.trim()
+          ? `Practice Questions:\n${practiceQuestions.trim()}`
+          : "",
+        audioLink?.trim()
+          ? `Audio Link:\n${audioLink.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
       const insertPayload = {
         title: title.trim(),
         class_name: selectedClass,
         subject,
-        type: workType,
-        question: finalQuestionText,
-        question_text: finalQuestionText,
+        type: "lesson_pack",
+        question: fullQuestionText,
+        question_text: fullQuestionText,
         keywords: keywords || "",
         due_date: dueDate || null,
-        teacher_name: teacherName || "Teacher",
-        teacher_id: teacherId || null,
+
+        teacher_name: userName || "Admin",
+        teacher_id: userId || null,
 
         question_file_url: uploadedQuestion.url || "",
         question_file_name: uploadedQuestion.name || "",
         model_answer_file_url: uploadedModelAnswer.url || "",
         model_answer_file_name: uploadedModelAnswer.name || "",
 
-        paper_mode: workType === "test_paper" ? paperMode : null,
-        difficulty: workType === "test_paper" ? difficulty : null,
-        total_marks: workType === "test_paper" ? safeNumber(totalMarks, 0) : null,
-        question_count: workType === "test_paper" ? safeNumber(questionCount, 0) : null,
-        test_paper_pattern: workType === "test_paper" ? testPaperPattern || "" : "",
-        generated_paper: workType === "test_paper" ? generatedPaper || "" : "",
-        generated_answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
-        answer_key: workType === "test_paper" ? finalAnswerKeyText : "",
-        lesson_files: lessonFilesToSave,
+        generated_paper: "",
+        generated_answer_key: "",
+        answer_key: "",
 
-        school_name: workType === "test_paper" ? schoolName : "",
-        chapter_name: workType === "test_paper" ? chapterName || "" : "",
-        exam_time: workType === "test_paper" ? examTime || "" : "",
-        exam_date: workType === "test_paper" ? examDate || null : null,
-        teacher_signature_name: workType === "test_paper" ? teacherSignatureName || "" : "",
+        lesson_files: uploadedLessons,
+
+        school_name: schoolName,
+        chapter_name: chapterName.trim(),
+        exam_time: "",
+        exam_date: null,
+        teacher_signature_name: userName || "",
 
         created_at: new Date().toISOString(),
       };
@@ -392,28 +276,28 @@ export default function TeacherCreateWorkPage() {
       }
 
       if (!insertedRow || !insertedRow.id) {
-        throw new Error("Work save failed. No row was returned from database.");
+        throw new Error("Lesson pack save failed. No row was returned from database.");
       }
 
-      setMessage(
-        workType === "test_paper"
-          ? "Test paper created successfully."
-          : "Work created successfully."
-      );
+      setMessage("Lesson pack created successfully.");
 
+      setSelectedClass("10th");
+      setSubject("Science");
+      setChapterName("");
       setTitle("");
-      setQuestionText("");
       setKeywords("");
+      setSimpleExplanation("");
+      setLessonSummary("");
+      setQuickRevision("");
+      setImportantQuestions("");
+      setPreviousYearInsights("");
+      setPracticeQuestions("");
+      setAudioLink("");
       setQuestionFile(null);
       setModelAnswerFile(null);
       setLessonFiles([]);
       setUploadedLessonFiles([]);
-      setGeneratedPaper("");
-      setGeneratedAnswerKey("");
-      setTestPaperPattern("");
-      setChapterName("");
-      setExamTime("1 Hour");
-      setExamDate(formatDateForInput(new Date()));
+      setDueDate(formatDateForInput(new Date()));
 
       const questionInput = document.getElementById("question-file-input");
       const modelAnswerInput = document.getElementById("model-answer-file-input");
@@ -427,29 +311,33 @@ export default function TeacherCreateWorkPage() {
         window.location.href = "/teacher-work-list";
       }, 800);
     } catch (err) {
-      console.error("SAVE WORK ERROR:", err);
-      setError(err.message || "Failed to save work.");
+      console.error("SAVE LESSON PACK ERROR:", err);
+      setError(err.message || "Failed to save lesson pack.");
     } finally {
       setSaving(false);
     }
   }
 
   function handleReset() {
+    setSelectedClass("10th");
+    setSubject("Science");
+    setChapterName("");
     setTitle("");
-    setQuestionText("");
     setKeywords("");
-    setGeneratedPaper("");
-    setGeneratedAnswerKey("");
-    setTestPaperPattern("");
+    setSimpleExplanation("");
+    setLessonSummary("");
+    setQuickRevision("");
+    setImportantQuestions("");
+    setPreviousYearInsights("");
+    setPracticeQuestions("");
+    setAudioLink("");
     setQuestionFile(null);
     setModelAnswerFile(null);
     setLessonFiles([]);
     setUploadedLessonFiles([]);
+    setDueDate(formatDateForInput(new Date()));
     setMessage("");
     setError("");
-    setChapterName("");
-    setExamTime("1 Hour");
-    setExamDate(formatDateForInput(new Date()));
 
     const questionInput = document.getElementById("question-file-input");
     const modelAnswerInput = document.getElementById("model-answer-file-input");
@@ -460,454 +348,370 @@ export default function TeacherCreateWorkPage() {
     if (lessonFilesInput) lessonFilesInput.value = "";
   }
 
-  if (!isAllowed) {
-    return null;
-  }
+  if (!isAllowed) return null;
 
   return (
-    <div className="min-h-screen bg-[#f6f8fc]">
-      <Header />
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
+      <Header name={userName} />
+
       <div className="flex">
-        <Sidebar />
+        <Sidebar role={userRole} />
 
         <main className="flex-1 p-4 md:p-6">
-          <div className="max-w-5xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 md:p-6">
-              <div className="mb-6">
-                <p className="text-sm text-gray-500">Create Work</p>
-                <h1 className="text-2xl font-bold text-gray-800">{pageTitle}</h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Create homework, classwork, quiz, or test paper for students.
-                </p>
-              </div>
-
-              {message ? (
-                <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
-                  {message}
-                </div>
-              ) : null}
-
-              {error ? (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 whitespace-pre-wrap">
-                  {error}
-                </div>
-              ) : null}
-
-              <form onSubmit={handleSaveWork} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Work Type
-                    </label>
-                    <select
-                      value={workType}
-                      onChange={(e) => setWorkType(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                    >
-                      {WORK_TYPE_OPTIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
+          <div className="mx-auto max-w-6xl">
+            <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
+              <div className="grid lg:grid-cols-[1.1fr_1.9fr]">
+                <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 p-6 text-white md:p-8">
+                  <div className="inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em]">
+                    AI Study Assistant
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Class
-                    </label>
-                    <select
-                      value={selectedClass}
-                      onChange={(e) => setSelectedClass(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                    >
-                      {CLASS_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
+                  <h1 className="mt-4 text-3xl font-extrabold leading-tight md:text-4xl">
+                    Create Lesson Pack
+                  </h1>
+
+                  <p className="mt-4 text-sm leading-7 text-white/90 md:text-base">
+                    Build chapter-wise study content for Class 9th and 10th students
+                    using lesson files, previous year questions, simple explanations,
+                    revision notes, and exam-focused practice.
+                  </p>
+
+                  <div className="mt-6 rounded-3xl border border-white/20 bg-white/10 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/80">
+                      School
+                    </p>
+                    <p className="mt-2 text-lg font-bold">{schoolName}</p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Subject
-                    </label>
-                    <select
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                    >
-                      {SUBJECT_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="mt-4 rounded-3xl border border-white/20 bg-white/10 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/80">
+                      Logged in as
+                    </p>
+                    <p className="mt-2 text-lg font-bold">{userName}</p>
+                    <p className="mt-1 text-sm text-white/85 capitalize">{userRole}</p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Due Date
-                    </label>
-                    <input
-                      type="date"
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                    />
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-4 text-sm text-white/90">
+                      📘 Chapter-based learning content
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-4 text-sm text-white/90">
+                      📝 Previous year question support
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-4 text-sm text-white/90">
+                      ⚡ Smart revision and practice
+                    </div>
+                    <div className="rounded-2xl border border-white/15 bg-white/10 p-4 text-sm text-white/90">
+                      🎧 Audio-ready lesson structure
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {workType === "test_paper" ? "Test Paper Title" : "Title"}
-                  </label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder={
-                      workType === "test_paper"
-                        ? "Enter test paper title"
-                        : "Enter work title"
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                  />
-                </div>
+                <div className="p-4 md:p-8">
+                  <div className="mb-6">
+                    <p className="text-sm font-semibold text-blue-600">
+                      Content Creation Panel
+                    </p>
+                    <h2 className="mt-1 text-2xl font-extrabold text-slate-900 md:text-3xl">
+                      Chapter Pack Details
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Add one complete lesson pack with chapter explanation, revision,
+                      previous year question insights, and practice material.
+                    </p>
+                  </div>
 
-                {workType === "test_paper" ? (
-                  <>
-                    <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
-                      <h2 className="text-lg font-bold text-gray-800 mb-4">
-                        Test Paper Header
-                      </h2>
+                  {message ? (
+                    <div className="mb-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+                      {message}
+                    </div>
+                  ) : null}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            School Name
-                          </label>
-                          <input
-                            type="text"
-                            value={schoolName}
-                            readOnly
-                            className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-gray-700"
-                          />
-                        </div>
+                  {error ? (
+                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 whitespace-pre-wrap text-red-700">
+                      {error}
+                    </div>
+                  ) : null}
 
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Chapter
-                          </label>
-                          <input
-                            type="text"
-                            value={chapterName}
-                            onChange={(e) => setChapterName(e.target.value)}
-                            placeholder="Enter chapter name"
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
+                  <form onSubmit={handleSaveLessonPack} className="space-y-6">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Class
+                        </label>
+                        <select
+                          value={selectedClass}
+                          onChange={(e) => setSelectedClass(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                        >
+                          {CLASS_OPTIONS.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Time
-                          </label>
-                          <input
-                            type="text"
-                            value={examTime}
-                            onChange={(e) => setExamTime(e.target.value)}
-                            placeholder="e.g. 1 Hour"
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Subject
+                        </label>
+                        <select
+                          value={subject}
+                          onChange={(e) => setSubject(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                        >
+                          {SUBJECT_OPTIONS.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Exam Date
-                          </label>
-                          <input
-                            type="date"
-                            value={examDate}
-                            onChange={(e) => setExamDate(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Teacher Signature Name
-                          </label>
-                          <input
-                            type="text"
-                            value={teacherSignatureName}
-                            onChange={(e) => setTeacherSignatureName(e.target.value)}
-                            placeholder="Teacher signature name"
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Save Date
+                        </label>
+                        <input
+                          type="date"
+                          value={dueDate}
+                          onChange={(e) => setDueDate(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                        />
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
-                      <h2 className="text-lg font-bold text-gray-800 mb-4">
-                        Test Paper Settings
-                      </h2>
-
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Paper Mode
-                          </label>
-                          <select
-                            value={paperMode}
-                            onChange={(e) => setPaperMode(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          >
-                            {PAPER_MODE_OPTIONS.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Difficulty
-                          </label>
-                          <select
-                            value={difficulty}
-                            onChange={(e) => setDifficulty(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          >
-                            {DIFFICULTY_OPTIONS.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Total Marks
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={totalMarks}
-                            onChange={(e) => setTotalMarks(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Question Count
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={questionCount}
-                            onChange={(e) => setQuestionCount(e.target.value)}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Upload Lesson Files (Multiple)
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Chapter Name
                         </label>
                         <input
-                          id="lesson-files-input"
-                          type="file"
-                          multiple
-                          onChange={handleLessonFilesChange}
-                          className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                          type="text"
+                          value={chapterName}
+                          onChange={(e) => setChapterName(e.target.value)}
+                          placeholder="Example: Electricity"
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
                         />
+                      </div>
 
-                        {lessonFiles.length > 0 ? (
-                          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
-                            <p className="text-sm font-semibold text-gray-700 mb-2">
-                              {lessonFiles.length} lesson file(s) selected:
-                            </p>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Lesson Pack Title
+                        </label>
+                        <input
+                          type="text"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Example: Class 10 Science - Electricity"
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
 
-                            <div className="space-y-2">
-                              {lessonFiles.map((file, index) => (
-                                <div
-                                  key={`${file.name}-${file.size}-${index}`}
-                                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2"
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Upload Lesson Files / Chapter PDFs / Notes
+                      </label>
+                      <input
+                        id="lesson-files-input"
+                        type="file"
+                        multiple
+                        onChange={handleLessonFilesChange}
+                        className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+                      />
+
+                      {lessonFiles.length > 0 ? (
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <p className="mb-3 text-sm font-semibold text-slate-700">
+                            {lessonFiles.length} file(s) selected
+                          </p>
+
+                          <div className="space-y-2">
+                            {lessonFiles.map((file, index) => (
+                              <div
+                                key={`${file.name}-${file.size}-${index}`}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              >
+                                <span className="break-all text-sm text-slate-700">
+                                  {file.name}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveLessonFile(index)}
+                                  className="shrink-0 rounded-xl bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
                                 >
-                                  <span className="text-sm text-gray-700 break-all">
-                                    {file.name}
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLessonFile(index)}
-                                    className="shrink-0 rounded-lg bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
                           </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Upload Previous Year Question Paper File
+                        </label>
+                        <input
+                          id="question-file-input"
+                          type="file"
+                          onChange={(e) => setQuestionFile(e.target.files?.[0] || null)}
+                          className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+                        />
+                        {questionFile ? (
+                          <p className="mt-2 text-sm text-slate-600">{questionFile.name}</p>
                         ) : null}
                       </div>
 
-                      <div className="mt-4">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Test Paper Pattern / Instructions
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Upload Audio / Supporting File
                         </label>
-                        <textarea
-                          rows={8}
-                          value={testPaperPattern}
-                          onChange={(e) => setTestPaperPattern(e.target.value)}
-                          placeholder={`Example:
-Choose the correct options and rewrite the sentences. 4 marks 4 questions
-Are the sentences Right or Wrong? 3 marks 3 questions
-Answer the following questions in one sentence each. 2 marks 2 questions
-Give geographical reasons (Any 1) from 2 questions. 3 marks
-Answer in detail (Any 2) from 3 questions. 8 marks`}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
+                        <input
+                          id="model-answer-file-input"
+                          type="file"
+                          onChange={(e) => setModelAnswerFile(e.target.files?.[0] || null)}
+                          className="block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm"
+                        />
+                        {modelAnswerFile ? (
+                          <p className="mt-2 text-sm text-slate-600">
+                            {modelAnswerFile.name}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Simple Explanation
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={simpleExplanation}
+                        onChange={(e) => setSimpleExplanation(e.target.value)}
+                        placeholder="Write the chapter explanation in simple student-friendly language..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Lesson Summary
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={lessonSummary}
+                        onChange={(e) => setLessonSummary(e.target.value)}
+                        placeholder="Add a short and clear summary of the lesson..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Quick Revision Notes
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={quickRevision}
+                        onChange={(e) => setQuickRevision(e.target.value)}
+                        placeholder="Add important revision points for exam preparation..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Previous Year Question Insights
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={previousYearInsights}
+                        onChange={(e) => setPreviousYearInsights(e.target.value)}
+                        placeholder="Write repeated patterns, asked topics, and important observations from previous papers..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Important Questions
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={importantQuestions}
+                        onChange={(e) => setImportantQuestions(e.target.value)}
+                        placeholder="Add 2-mark, 5-mark, long-answer, or important exam questions..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">
+                        Practice Questions
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={practiceQuestions}
+                        onChange={(e) => setPracticeQuestions(e.target.value)}
+                        placeholder="Add student practice questions for this chapter..."
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Audio Link
+                        </label>
+                        <input
+                          type="text"
+                          value={audioLink}
+                          onChange={(e) => setAudioLink(e.target.value)}
+                          placeholder="Paste audio URL if available"
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
                         />
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={handleGenerateTestPaper}
-                          disabled={generating}
-                          className="rounded-xl bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          {generating ? "Generating..." : "Generate Test Paper"}
-                        </button>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                          Keywords
+                        </label>
+                        <input
+                          type="text"
+                          value={keywords}
+                          onChange={(e) => setKeywords(e.target.value)}
+                          placeholder="Optional keywords"
+                          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                        />
                       </div>
                     </div>
 
-                    {(generatedPaper || generatedAnswerKey) && (
-                      <div className="rounded-2xl border border-gray-200 p-4 bg-white">
-                        <h2 className="text-lg font-bold text-gray-800 mb-4">
-                          Generated Preview
-                        </h2>
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-60"
+                      >
+                        {saving ? "Saving..." : "Create Lesson Pack"}
+                      </button>
 
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Generated Test Paper
-                            </label>
-                            <textarea
-                              rows={14}
-                              value={generatedPaper}
-                              onChange={(e) => setGeneratedPaper(e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Generated Answer Key / Marking Guide
-                            </label>
-                            <textarea
-                              rows={12}
-                              value={generatedAnswerKey}
-                              onChange={(e) => setGeneratedAnswerKey(e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Question / Instructions
-                    </label>
-                    <textarea
-                      rows={8}
-                      value={questionText}
-                      onChange={(e) => setQuestionText(e.target.value)}
-                      placeholder="Enter homework, classwork, or quiz question here..."
-                      className="w-full rounded-xl border border-gray-300 px-3 py-3 outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
-
-                <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
-                  <h2 className="text-lg font-bold text-gray-800 mb-4">Manual Upload Fields</h2>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Upload Question / Lesson File
-                      </label>
-                      <input
-                        id="question-file-input"
-                        type="file"
-                        onChange={(e) => setQuestionFile(e.target.files?.[0] || null)}
-                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
-                      />
-                      {questionFile ? (
-                        <p className="mt-2 text-sm text-gray-600">{questionFile.name}</p>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="rounded-2xl bg-slate-200 px-6 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-300"
+                      >
+                        Reset
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Upload Model Answer / Answer Key File
-                      </label>
-                      <input
-                        id="model-answer-file-input"
-                        type="file"
-                        onChange={(e) => setModelAnswerFile(e.target.files?.[0] || null)}
-                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
-                      />
-                      {modelAnswerFile ? (
-                        <p className="mt-2 text-sm text-gray-600">{modelAnswerFile.name}</p>
-                      ) : null}
-                    </div>
-                  </div>
+                  </form>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Keywords
-                  </label>
-                  <input
-                    type="text"
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                    placeholder="Optional keywords"
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-xl bg-green-600 px-5 py-2.5 text-white font-semibold hover:bg-green-700 disabled:opacity-60"
-                  >
-                    {saving
-                      ? "Saving..."
-                      : workType === "test_paper"
-                      ? "Create Test Paper"
-                      : "Create Work"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className="rounded-xl bg-gray-200 px-5 py-2.5 text-gray-800 font-semibold hover:bg-gray-300"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </form>
+              </div>
             </div>
           </div>
         </main>

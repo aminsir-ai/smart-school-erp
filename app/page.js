@@ -2,122 +2,107 @@
 
 import Link from "next/link";
 
-const portals = [
+const mainActions = [
   {
     title: "Login",
-    subtitle: "Secure access for all users",
+    subtitle: "Secure access for students and admin",
     href: "/login",
     bg: "from-blue-600 to-indigo-600",
-    text: "text-white",
     border: "border-blue-500",
     icon: "🔐",
   },
   {
-    title: "Management",
-    subtitle: "Overview, performance and reports",
-    href: "/management-dashboard",
-    bg: "from-amber-500 to-orange-500",
-    text: "text-white",
-    border: "border-orange-400",
-    icon: "🏢",
-  },
-  {
-    title: "Admin Panel",
-    subtitle: "School administration dashboard",
-    href: "/admin-dashboard",
-    bg: "from-slate-800 to-slate-900",
-    text: "text-white",
-    border: "border-slate-700",
-    icon: "👨‍💼",
-  },
-  {
-    title: "Teacher Panel",
-    subtitle: "Manage work, papers and class tasks",
-    href: "/teacher-dashboard",
-    bg: "from-emerald-500 to-green-600",
-    text: "text-white",
-    border: "border-green-500",
-    icon: "👨‍🏫",
-  },
-  {
-    title: "Student Panel",
-    subtitle: "Access homework, classwork and updates",
+    title: "Student Dashboard",
+    subtitle: "Continue learning, revision, and practice",
     href: "/student-dashboard",
     bg: "from-violet-500 to-purple-600",
-    text: "text-white",
-    border: "border-purple-500",
-    icon: "👨‍🎓",
+    border: "border-violet-500",
+    icon: "🎓",
   },
   {
-    title: "Parents",
-    subtitle: "Track student progress and notices",
-    href: "/parents-dashboard",
-    bg: "from-pink-500 to-rose-500",
-    text: "text-white",
-    border: "border-rose-400",
-    icon: "👨‍👩‍👧",
+    title: "Admin Dashboard",
+    subtitle: "Manage lessons, chapter packs, and study content",
+    href: "/admin-dashboard",
+    bg: "from-slate-800 to-slate-900",
+    border: "border-slate-700",
+    icon: "🛠️",
   },
 ];
 
-const features = [
+const subjectCards = [
   {
-    title: "Attendance",
-    description: "Track daily student and staff attendance with quick status updates.",
-    icon: "📅",
+    title: "Science",
+    description: "Concepts, diagrams, important questions, and revision notes.",
+    icon: "🔬",
     bg: "bg-blue-50",
     iconBg: "bg-blue-100",
   },
   {
-    title: "Fees",
-    description: "Manage fee collection, dues, pending payments and records easily.",
-    icon: "💳",
+    title: "Maths",
+    description: "Step-by-step solving, formulas, examples, and practice.",
+    icon: "📐",
     bg: "bg-green-50",
     iconBg: "bg-green-100",
   },
   {
-    title: "Homework",
-    description: "Create, assign, submit and review homework in one simple system.",
+    title: "History",
+    description: "Simple explanations, timelines, answers, and key points.",
+    icon: "📜",
+    bg: "bg-amber-50",
+    iconBg: "bg-amber-100",
+  },
+  {
+    title: "Geography",
+    description: "Reasons, processes, maps, and exam-focused revision.",
+    icon: "🌍",
+    bg: "bg-cyan-50",
+    iconBg: "bg-cyan-100",
+  },
+  {
+    title: "English",
+    description: "Grammar, writing help, summaries, and better understanding.",
     icon: "📘",
-    bg: "bg-violet-50",
-    iconBg: "bg-violet-100",
-  },
-  {
-    title: "Test Papers",
-    description: "Generate print-friendly test papers for class and exam preparation.",
-    icon: "📝",
-    bg: "bg-orange-50",
-    iconBg: "bg-orange-100",
-  },
-  {
-    title: "Reports",
-    description: "View smart summaries, school performance and important insights.",
-    icon: "📊",
     bg: "bg-pink-50",
     iconBg: "bg-pink-100",
   },
 ];
 
-const highlights = [
+const features = [
   {
-    title: "System Access",
-    text: "Management, Admin, Teacher, Student and Parent panels in one school system.",
+    title: "Simple Explanation",
+    text: "Learn each lesson in easy student-friendly language.",
     color: "border-blue-200 bg-white",
   },
   {
-    title: "Demo Ready Design",
-    text: "Clean, colorful and responsive landing page for mobile and desktop demo.",
+    title: "Smart Revision",
+    text: "Quick revision notes for faster exam preparation.",
+    color: "border-violet-200 bg-white",
+  },
+  {
+    title: "Previous Year Questions",
+    text: "Study lesson-wise important questions from earlier papers.",
     color: "border-emerald-200 bg-white",
   },
   {
-    title: "School Branding",
-    text: "United English School, Morba is shown permanently as the school identity.",
-    color: "border-violet-200 bg-white",
+    title: "Practice Support",
+    text: "Prepare with chapter-based practice questions and tests.",
+    color: "border-orange-200 bg-white",
+  },
+  {
+    title: "Audio Learning",
+    text: "Listen to lesson explanations for easier understanding.",
+    color: "border-pink-200 bg-white",
+  },
+  {
+    title: "Exam Preparation",
+    text: "Focus on what matters most for better results in exams.",
+    color: "border-slate-200 bg-white",
   },
 ];
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 px-4 py-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="mb-4 inline-flex rounded-full border border-blue-200 bg-white px-5 py-3 shadow-sm">
           <span className="text-sm font-bold text-slate-800 sm:text-base">
@@ -128,33 +113,69 @@ export default function HomePage() {
         <section className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-xl backdrop-blur sm:p-8 lg:p-10">
           <div className="mx-auto max-w-4xl text-center">
             <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.2em] text-blue-600 sm:text-sm">
-              Demo Ready School Management Platform
+              Student Learning Platform
             </p>
 
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl lg:text-7xl">
-              Smart School ERP
+              AI Study Assistant
             </h1>
 
+            <p className="mx-auto mt-4 max-w-3xl text-lg font-semibold text-violet-700 sm:text-xl">
+              Simple learning, smart revision, better exam preparation
+            </p>
+
             <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">
-              A modern, simple, and mobile-friendly ERP system for Management,
-              Admin, Teachers, Students, and Parents. Manage attendance, fees,
-              homework, test papers, and reports from one platform.
+              A focused learning platform for Class 9th and 10th students with
+              simple explanations, smart revision, previous year questions,
+              practice support, and audio learning.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {mainActions.map((item) => (
+                <Link
+                  key={item.title}
+                  href={item.href}
+                  className={`rounded-3xl border ${item.border} bg-gradient-to-r ${item.bg} p-5 text-white shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-xl`}
+                >
+                  <div className="mb-3 text-3xl">{item.icon}</div>
+                  <h2 className="text-2xl font-extrabold">{item.title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/90">
+                    {item.subtitle}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <div className="text-center">
+            <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
+              Subjects We Focus On
+            </h2>
+            <p className="mt-3 text-base text-slate-600 sm:text-lg">
+              Designed for Class 9th and 10th students with exam-focused support.
             </p>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {portals.map((item) => (
-              <Link
-                key={item.title}
-                href={item.href}
-                className={`rounded-3xl border ${item.border} bg-gradient-to-r ${item.bg} ${item.text} p-5 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-xl`}
+          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
+            {subjectCards.map((subject) => (
+              <div
+                key={subject.title}
+                className={`rounded-3xl border border-slate-200 ${subject.bg} p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg`}
               >
-                <div className="mb-3 text-3xl">{item.icon}</div>
-                <h2 className="text-2xl font-extrabold">{item.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-white/90">
-                  {item.subtitle}
+                <div
+                  className={`mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl text-3xl ${subject.iconBg}`}
+                >
+                  {subject.icon}
+                </div>
+                <h3 className="text-2xl font-extrabold text-slate-900">
+                  {subject.title}
+                </h3>
+                <p className="mt-3 text-base leading-8 text-slate-600">
+                  {subject.description}
                 </p>
-              </Link>
+              </div>
             ))}
           </div>
         </section>
@@ -162,49 +183,28 @@ export default function HomePage() {
         <section className="mt-10">
           <div className="text-center">
             <h2 className="text-3xl font-extrabold text-slate-900 sm:text-4xl">
-              Core Features
+              What Students Get
             </h2>
             <p className="mt-3 text-base text-slate-600 sm:text-lg">
-              Built for daily school operations and ready for live demo presentation.
+              Built to make learning easier and exam preparation stronger.
             </p>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
-            {features.map((feature) => (
+          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {features.map((item) => (
               <div
-                key={feature.title}
-                className={`rounded-3xl border border-slate-200 ${feature.bg} p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg`}
+                key={item.title}
+                className={`rounded-3xl border p-6 shadow-sm ${item.color}`}
               >
-                <div
-                  className={`mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl text-3xl ${feature.iconBg}`}
-                >
-                  {feature.icon}
-                </div>
                 <h3 className="text-2xl font-extrabold text-slate-900">
-                  {feature.title}
+                  {item.title}
                 </h3>
                 <p className="mt-3 text-base leading-8 text-slate-600">
-                  {feature.description}
+                  {item.text}
                 </p>
               </div>
             ))}
           </div>
-        </section>
-
-        <section className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-3">
-          {highlights.map((item) => (
-            <div
-              key={item.title}
-              className={`rounded-3xl border p-6 shadow-sm ${item.color}`}
-            >
-              <h3 className="text-2xl font-extrabold text-slate-900">
-                {item.title}
-              </h3>
-              <p className="mt-3 text-base leading-8 text-slate-600">
-                {item.text}
-              </p>
-            </div>
-          ))}
         </section>
       </div>
     </main>

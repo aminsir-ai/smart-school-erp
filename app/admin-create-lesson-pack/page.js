@@ -57,7 +57,10 @@ export default function AdminCreateLessonPackPage() {
   }, []);
 
   function buildLessonContent() {
-    return `Simple Explanation:
+    return `Chapter Name:
+${chapterName.trim()}
+
+Simple Explanation:
 ${simpleExplanation.trim()}
 
 Lesson Summary:
@@ -143,7 +146,6 @@ ${audioLink.trim()}`;
         ai_generated: true,
         generated_paper_text: combinedLessonText,
         generated_answer_key: `Lesson Pack Summary:\n${lessonSummary.trim()}`,
-        keyword: chapterName.trim(),
       };
 
       const { error } = await supabase.from("works").insert([payload]);
@@ -151,7 +153,6 @@ ${audioLink.trim()}`;
       if (error) {
         console.log("SAVE LESSON PACK ERROR:", error);
         setMessage(`Failed to save lesson pack: ${error.message}`);
-        setSaving(false);
         return;
       }
 

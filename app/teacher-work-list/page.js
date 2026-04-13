@@ -242,6 +242,11 @@ export default function TeacherWorkListPage() {
     setExpandedId((prev) => (prev === id ? null : id));
   }
 
+  function openLesson(id) {
+    if (!id) return;
+    window.location.href = `/lesson/${id}`;
+  }
+
   const filteredWorks = useMemo(() => {
     return works.filter((work) => {
       const matchesSearch =
@@ -351,10 +356,10 @@ export default function TeacherWorkListPage() {
                 <div className="flex flex-col justify-center p-6 md:p-8">
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                      School
+                      Platform
                     </p>
                     <p className="mt-2 text-lg font-bold text-slate-900">
-                      {SCHOOL_NAME_FALLBACK}
+                      AI Study Assistant
                     </p>
                   </div>
 
@@ -547,7 +552,15 @@ export default function TeacherWorkListPage() {
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 lg:w-[220px] lg:flex-col">
+                          <div className="flex flex-wrap gap-2 lg:w-[240px] lg:flex-col">
+                            <button
+                              type="button"
+                              onClick={() => openLesson(work.id)}
+                              className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-violet-700"
+                            >
+                              Open Lesson
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => toggleExpand(work.id)}
@@ -572,10 +585,10 @@ export default function TeacherWorkListPage() {
                             <div className="grid gap-4 md:grid-cols-2">
                               <div className="rounded-2xl bg-slate-50 p-4">
                                 <p className="text-sm font-semibold text-slate-700">
-                                  School Name
+                                  Platform
                                 </p>
                                 <p className="mt-2 text-sm text-slate-600">
-                                  {work?.school_name || SCHOOL_NAME_FALLBACK}
+                                  AI Study Assistant
                                 </p>
                               </div>
 
@@ -587,6 +600,16 @@ export default function TeacherWorkListPage() {
                                   {work?.keywords || "-"}
                                 </p>
                               </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                type="button"
+                                onClick={() => openLesson(work.id)}
+                                className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-violet-700"
+                              >
+                                Open Lesson Page
+                              </button>
                             </div>
 
                             <div className="rounded-2xl bg-blue-50 p-4">

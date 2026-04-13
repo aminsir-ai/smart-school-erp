@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -70,9 +69,6 @@ function isLessonPack(item) {
 }
 
 export default function StudentLessonsPage() {
-  const searchParams = useSearchParams();
-  const querySubject = searchParams.get("subject");
-
   const [studentName, setStudentName] = useState("Student");
   const [className, setClassName] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
@@ -110,6 +106,11 @@ export default function StudentLessonsPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const querySubject = params.get("subject");
+
     if (!querySubject) {
       setSubjectFilter("All");
       return;
@@ -124,7 +125,7 @@ export default function StudentLessonsPage() {
     } else {
       setSubjectFilter("All");
     }
-  }, [querySubject]);
+  }, []);
 
   useEffect(() => {
     if (!isAllowed) return;

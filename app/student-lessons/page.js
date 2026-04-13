@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -28,6 +29,7 @@ function getLessonText(item) {
 function extractSection(fullText, label) {
   const text = String(fullText || "");
   const safeLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   const regex = new RegExp(
     `${safeLabel}:\\n([\\s\\S]*?)(?=\\n\\n(?:Chapter Name|Simple Explanation|Lesson Summary|Quick Revision|Previous Year Question Insights|Important Questions|Practice Questions|Audio Link):|$)`,
     "i"
@@ -49,7 +51,6 @@ function getPreviewText(item) {
 
 function getChapterName(item) {
   const fullText = getLessonText(item);
-
   return extractSection(fullText, "Chapter Name") || "-";
 }
 
@@ -69,6 +70,9 @@ function isLessonPack(item) {
 }
 
 export default function StudentLessonsPage() {
+  const searchParams = useSearchParams();
+  const querySubject = searchParams.get("subject");
+
   const [studentName, setStudentName] = useState("Student");
   const [className, setClassName] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
@@ -104,6 +108,23 @@ export default function StudentLessonsPage() {
       window.location.href = "/login";
     }
   }, []);
+
+  useEffect(() => {
+    if (!querySubject) {
+      setSubjectFilter("All");
+      return;
+    }
+
+    const matchedSubject = SUBJECT_OPTIONS.find(
+      (item) => item.toLowerCase() === querySubject.toLowerCase()
+    );
+
+    if (matchedSubject) {
+      setSubjectFilter(matchedSubject);
+    } else {
+      setSubjectFilter("All");
+    }
+  }, [querySubject]);
 
   useEffect(() => {
     if (!isAllowed) return;
@@ -208,6 +229,12 @@ export default function StudentLessonsPage() {
                     Browse chapter-wise lesson packs, revise key topics, and open
                     student-friendly study content prepared for exam support.
                   </p>
+
+                  {subjectFilter !== "All" ? (
+                    <div className="mt-5 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-bold text-white">
+                      Subject Filter: {subjectFilter}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="p-6 sm:p-8">

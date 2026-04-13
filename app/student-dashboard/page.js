@@ -15,6 +15,14 @@ function isLessonPack(item) {
   );
 }
 
+const QUICK_SUBJECTS = [
+  { name: "Science", icon: "🔬" },
+  { name: "Maths", icon: "📐" },
+  { name: "History", icon: "📜" },
+  { name: "Geography", icon: "🌍" },
+  { name: "English", icon: "📘" },
+];
+
 export default function StudentDashboardPage() {
   const [studentName, setStudentName] = useState("Student");
   const [studentClass, setStudentClass] = useState("");
@@ -83,6 +91,15 @@ export default function StudentDashboardPage() {
     }
   }
 
+  function openLessonsPage(subject = "") {
+    if (subject) {
+      window.location.href = `/student-lessons?subject=${encodeURIComponent(subject)}`;
+      return;
+    }
+
+    window.location.href = "/student-lessons";
+  }
+
   const stats = useMemo(() => {
     const totalLessons = lessonPacks.length;
 
@@ -138,18 +155,14 @@ export default function StudentDashboardPage() {
 
                   <div className="mt-8 flex flex-wrap gap-3">
                     <button
-                      onClick={() => {
-                        window.location.href = "/student-lessons";
-                      }}
+                      onClick={() => openLessonsPage()}
                       className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-violet-700 shadow-sm transition hover:bg-slate-100"
                     >
                       View Lessons
                     </button>
 
                     <button
-                      onClick={() => {
-                        window.location.href = "/student-lessons";
-                      }}
+                      onClick={() => openLessonsPage()}
                       className="rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/20"
                     >
                       Start Revision
@@ -256,15 +269,52 @@ export default function StudentDashboardPage() {
                     </p>
 
                     <button
-                      onClick={() => {
-                        window.location.href = "/student-lessons";
-                      }}
+                      onClick={() => openLessonsPage()}
                       className="mt-5 w-full rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:opacity-95"
                     >
                       Go to Student Lessons
                     </button>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/70 bg-white/90 p-6 shadow-xl backdrop-blur">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <h2 className="text-2xl font-extrabold text-slate-900">
+                    Subject Quick Access
+                  </h2>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    Jump directly to subject-wise lesson packs for faster study.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => openLessonsPage()}
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  View All Subjects
+                </button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                {QUICK_SUBJECTS.map((subject) => (
+                  <button
+                    key={subject.name}
+                    onClick={() => openLessonsPage(subject.name)}
+                    className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                  >
+                    <div className="text-3xl">{subject.icon}</div>
+                    <h3 className="mt-4 text-xl font-extrabold text-slate-900">
+                      {subject.name}
+                    </h3>
+                    <p className="mt-2 text-sm leading-7 text-slate-600">
+                      Open {subject.name} lesson packs, revision notes, and important
+                      questions.
+                    </p>
+                  </button>
+                ))}
               </div>
             </section>
 
@@ -280,9 +330,7 @@ export default function StudentDashboardPage() {
                 </div>
 
                 <button
-                  onClick={() => {
-                    window.location.href = "/student-lessons";
-                  }}
+                  onClick={() => openLessonsPage()}
                   className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                 >
                   View All Lessons
@@ -338,9 +386,7 @@ export default function StudentDashboardPage() {
                         </button>
 
                         <button
-                          onClick={() => {
-                            window.location.href = "/student-lessons";
-                          }}
+                          onClick={() => openLessonsPage()}
                           className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
                         >
                           View More

@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 
 const SCHOOL_NAME_FALLBACK = "United English School, Morba";
+
+const CLASS_FILTERS = ["All", "9th", "10th"];
+const SUBJECT_FILTERS = [
+  "All",
+  "Science",
+  "Maths",
+  "History",
+  "Geography",
+  "English",
+];
 
 function formatDate(value) {
   if (!value) return "-";
@@ -24,6 +34,7 @@ function formatDate(value) {
 function formatType(type) {
   const text = String(type || "").trim().toLowerCase();
 
+  if (text === "lesson_pack" || text === "lesson pack") return "Lesson Pack";
   if (text === "homework" || text === "home work") return "Homework";
   if (text === "classwork" || text === "class work") return "Class Work";
   if (text === "quiz") return "Quiz";
@@ -36,163 +47,35 @@ function getSubjectLabel(work) {
   return work?.subject || work?.subject_name || "-";
 }
 
-function getQuestionPaperText(work) {
+function getChapterName(work) {
+  return work?.chapter_name || "-";
+}
+
+function getPreviewText(work) {
   return (
-    work?.generated_paper ||
     work?.question_text ||
     work?.question ||
+    work?.generated_paper ||
     work?.description ||
-    work?.instructions ||
     "No content"
   );
 }
 
-function getAnswerKeyText(work) {
-  return (
-    work?.generated_answer_key ||
-    work?.answer_key ||
-    work?.model_answer ||
-    ""
-  );
+function getFileCount(work) {
+  if (!Array.isArray(work?.lesson_files)) return 0;
+  return work.lesson_files.length;
 }
 
-function escapeHtml(text) {
-  return String(text || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function buildPrintableHtml({ work, mode = "paper" }) {
-  const schoolName = escapeHtml(work?.school_name || SCHOOL_NAME_FALLBACK);
-  const title = escapeHtml(work?.title || "Test Paper");
-  const className = escapeHtml(work?.class_name || "-");
-  const subject = escapeHtml(getSubjectLabel(work));
-  const totalMarks = escapeHtml(
-    work?.total_marks !== null && work?.total_marks !== undefined
-      ? String(work.total_marks)
-      : "-"
-  );
-  const questionCount = escapeHtml(
-    work?.question_count !== null && work?.question_count !== undefined
-      ? String(work.question_count)
-      : "-"
-  );
-  const chapterName = escapeHtml(work?.chapter_name || "-");
-  const examTime = escapeHtml(work?.exam_time || "1 Hour");
-  const examDate = escapeHtml(formatDate(work?.exam_date || work?.due_date));
-  const teacherSignatureName = escapeHtml(work?.teacher_signature_name || "");
-
-  const bodyText =
-    mode === "answer_key"
-      ? getAnswerKeyText(work)
-      : getQuestionPaperText(work);
-
-  const printableTitle =
-    mode === "answer_key" ? `${title} - Answer Key` : title;
-
-  const printableContent = escapeHtml(bodyText).replace(/\n/g, "<br>");
-
-  return `
-    <html>
-      <head>
-        <title>${printableTitle}</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            color: #111827;
-            margin: 28px;
-            line-height: 1.5;
-          }
-          .school-name {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 8px;
-          }
-          .paper-title {
-            text-align: center;
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 18px;
-          }
-          .meta-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px 24px;
-            margin-bottom: 18px;
-            font-size: 14px;
-          }
-          .meta-item {
-            padding: 2px 0;
-          }
-          .label {
-            font-weight: 700;
-          }
-          .content-box {
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            padding: 16px;
-            font-size: 15px;
-            white-space: normal;
-            word-break: break-word;
-          }
-          .signature {
-            margin-top: 40px;
-            display: flex;
-            justify-content: flex-end;
-            font-size: 14px;
-          }
-          .signature-line {
-            min-width: 220px;
-            text-align: center;
-            border-top: 1px solid #111827;
-            padding-top: 6px;
-          }
-          @media print {
-            body {
-              margin: 16px;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="school-name">${schoolName}</div>
-        <div class="paper-title">${printableTitle}</div>
-
-        <div class="meta-grid">
-          <div class="meta-item"><span class="label">Class:</span> ${className}</div>
-          <div class="meta-item"><span class="label">Subject:</span> ${subject}</div>
-          <div class="meta-item"><span class="label">Chapter:</span> ${chapterName}</div>
-          <div class="meta-item"><span class="label">Time:</span> ${examTime}</div>
-          <div class="meta-item"><span class="label">Date:</span> ${examDate}</div>
-          <div class="meta-item"><span class="label">Total Marks:</span> ${totalMarks}</div>
-          <div class="meta-item"><span class="label">Question Count:</span> ${questionCount}</div>
-        </div>
-
-        <div class="content-box">
-          ${printableContent}
-        </div>
-
-        <div class="signature">
-          <div class="signature-line">
-            ${teacherSignatureName || "Teacher Signature"}
-          </div>
-        </div>
-
-        <script>
-          window.onload = function () {
-            window.print();
-          };
-        </script>
-      </body>
-    </html>
-  `;
+function getAudioLinkFromText(work) {
+  const text = String(work?.question_text || work?.question || "");
+  const match = text.match(/Audio Link:\n([\s\S]*?)(\n\n|$)/i);
+  return match?.[1]?.trim() || "";
 }
 
 export default function TeacherWorkListPage() {
-  const [teacherName, setTeacherName] = useState("Teacher");
-  const [teacherId, setTeacherId] = useState("");
+  const [userName, setUserName] = useState("Admin");
+  const [userId, setUserId] = useState("");
+  const [userRole, setUserRole] = useState("admin");
   const [userLoaded, setUserLoaded] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
 
@@ -201,6 +84,10 @@ export default function TeacherWorkListPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
+
+  const [searchText, setSearchText] = useState("");
+  const [classFilter, setClassFilter] = useState("All");
+  const [subjectFilter, setSubjectFilter] = useState("All");
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -221,13 +108,21 @@ export default function TeacherWorkListPage() {
       return;
     }
 
-    if (!user || user.role !== "teacher") {
+    if (!user) {
       window.location.href = "/login";
       return;
     }
 
-    setTeacherName(user.name || "Teacher");
-    setTeacherId(String(user.id || user.teacher_id || user.email || ""));
+    const allowedRoles = ["teacher", "admin", "management"];
+
+    if (!allowedRoles.includes(user.role)) {
+      window.location.href = "/login";
+      return;
+    }
+
+    setUserName(user.name || "Admin");
+    setUserId(String(user.id || user.teacher_id || user.email || ""));
+    setUserRole(user.role || "admin");
     setIsAllowed(true);
     setUserLoaded(true);
   }, []);
@@ -235,7 +130,7 @@ export default function TeacherWorkListPage() {
   useEffect(() => {
     if (!userLoaded || !isAllowed) return;
     fetchWorks();
-  }, [userLoaded, isAllowed, teacherId]);
+  }, [userLoaded, isAllowed, userId]);
 
   async function fetchWorks() {
     setLoading(true);
@@ -247,17 +142,17 @@ export default function TeacherWorkListPage() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (teacherId) {
-        query = query.eq("teacher_id", teacherId);
+      if (userRole === "teacher" && userId) {
+        query = query.eq("teacher_id", userId);
       }
 
       let { data, error } = await query;
 
-      if ((!data || data.length === 0) && teacherName) {
+      if ((!data || data.length === 0) && userRole === "teacher" && userName) {
         const fallback = await supabase
           .from("works")
           .select("*")
-          .eq("teacher_name", teacherName)
+          .eq("teacher_name", userName)
           .order("created_at", { ascending: false });
 
         data = fallback.data;
@@ -266,47 +161,23 @@ export default function TeacherWorkListPage() {
 
       if (error) {
         console.log("FETCH WORKS ERROR:", error);
-        setError(error.message || "Failed to load works.");
+        setError(error.message || "Failed to load lesson packs.");
         setWorks([]);
       } else {
         setWorks(data || []);
       }
     } catch (error) {
       console.log("FETCH WORKS CATCH ERROR:", error);
-      setError("Failed to load works.");
+      setError("Failed to load lesson packs.");
       setWorks([]);
     } finally {
       setLoading(false);
     }
   }
 
-  function toggleExpand(id) {
-    setExpandedId((prev) => (prev === id ? null : id));
-  }
-
-  function openPrintWindow(work, mode = "paper") {
-    try {
-      const printWindow = window.open("", "_blank", "width=900,height=700");
-
-      if (!printWindow) {
-        alert("Popup blocked. Please allow popups and try again.");
-        return;
-      }
-
-      const html = buildPrintableHtml({ work, mode });
-
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch (error) {
-      console.log("PRINT ERROR:", error);
-      alert("Failed to open print view.");
-    }
-  }
-
   async function handleDeleteWork(workId) {
     const ok = window.confirm(
-      "Are you sure you want to permanently delete this work?"
+      "Are you sure you want to permanently delete this lesson/content item?"
     );
 
     if (!ok) return;
@@ -326,7 +197,7 @@ export default function TeacherWorkListPage() {
       }
 
       if (!existingRow) {
-        throw new Error("Work not found in database.");
+        throw new Error("Content item not found in database.");
       }
 
       const { error: deleteError } = await supabase
@@ -357,199 +228,446 @@ export default function TeacherWorkListPage() {
       }
 
       await fetchWorks();
-      alert("Work deleted permanently.");
+      alert("Content deleted permanently.");
     } catch (error) {
       console.log("DELETE WORK ERROR:", error);
-      setError(error.message || "Failed to delete work permanently.");
-      alert(error.message || "Failed to delete work permanently.");
+      setError(error.message || "Failed to delete content permanently.");
+      alert(error.message || "Failed to delete content permanently.");
     } finally {
       setDeletingId(null);
     }
   }
 
-  if (!userLoaded) return null;
-  if (!isAllowed) return null;
+  function toggleExpand(id) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  const filteredWorks = useMemo(() => {
+    return works.filter((work) => {
+      const matchesSearch =
+        !searchText.trim() ||
+        String(work?.title || "")
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
+        String(work?.chapter_name || "")
+          .toLowerCase()
+          .includes(searchText.toLowerCase()) ||
+        String(getSubjectLabel(work))
+          .toLowerCase()
+          .includes(searchText.toLowerCase());
+
+      const matchesClass =
+        classFilter === "All" || String(work?.class_name || "") === classFilter;
+
+      const matchesSubject =
+        subjectFilter === "All" || String(getSubjectLabel(work)) === subjectFilter;
+
+      return matchesSearch && matchesClass && matchesSubject;
+    });
+  }, [works, searchText, classFilter, subjectFilter]);
+
+  const stats = useMemo(() => {
+    const lessonPackCount = works.filter(
+      (item) => String(item?.type || "").toLowerCase() === "lesson_pack"
+    ).length;
+
+    const class10Count = works.filter(
+      (item) => String(item?.class_name || "") === "10th"
+    ).length;
+
+    const class9Count = works.filter(
+      (item) => String(item?.class_name || "") === "9th"
+    ).length;
+
+    return {
+      total: works.length,
+      lessonPacks: lessonPackCount,
+      class9: class9Count,
+      class10: class10Count,
+    };
+  }, [works]);
+
+  if (!userLoaded || !isAllowed) return null;
 
   return (
     <>
-      <Header name={teacherName} />
+      <Header name={userName} />
 
-      <div className="flex min-h-screen bg-gray-100">
-        <Sidebar role="teacher" />
+      <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
+        <Sidebar role={userRole} />
 
         <div className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-6xl space-y-6">
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <h1 className="text-3xl font-bold text-gray-800">
-                Teacher - All Works
-              </h1>
-              <p className="mt-2 text-gray-600">
-                View all created homework, classwork, quiz, and test papers.
-              </p>
-            </div>
+          <div className="mx-auto max-w-7xl space-y-6">
+            <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
+              <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 p-6 text-white md:p-8">
+                  <div className="inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em]">
+                    AI Study Assistant
+                  </div>
 
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">
-                  Work List
+                  <h1 className="mt-4 text-3xl font-extrabold md:text-4xl">
+                    Lesson Pack Library
+                  </h1>
+
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-white/90 md:text-base">
+                    View and manage chapter-wise study content for Class 9th and 10th.
+                    Track lesson packs, revision material, previous year question
+                    support, and subject-wise learning content from one place.
+                  </p>
+
+                  <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/75">
+                        Total Items
+                      </p>
+                      <h3 className="mt-2 text-3xl font-extrabold">{stats.total}</h3>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/75">
+                        Lesson Packs
+                      </p>
+                      <h3 className="mt-2 text-3xl font-extrabold">
+                        {stats.lessonPacks}
+                      </h3>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/75">
+                        9th
+                      </p>
+                      <h3 className="mt-2 text-3xl font-extrabold">{stats.class9}</h3>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/75">
+                        10th
+                      </p>
+                      <h3 className="mt-2 text-3xl font-extrabold">{stats.class10}</h3>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-center p-6 md:p-8">
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                      School
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-slate-900">
+                      {SCHOOL_NAME_FALLBACK}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                      Logged in as
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-slate-900">
+                      {userName}
+                    </p>
+                    <p className="mt-1 text-sm capitalize text-slate-600">
+                      {userRole}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={fetchWorks}
+                    className="mt-4 rounded-2xl bg-blue-100 px-4 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-200"
+                  >
+                    Refresh Library
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5">
+                <h2 className="text-2xl font-extrabold text-slate-900">
+                  Search and Filter
                 </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Find lesson packs by title, chapter, class, or subject.
+                </p>
+              </div>
 
-                <button
-                  onClick={fetchWorks}
-                  className="rounded-xl bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-200"
-                >
-                  Refresh
-                </button>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Search
+                  </label>
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search by title, chapter, or subject..."
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Class
+                  </label>
+                  <select
+                    value={classFilter}
+                    onChange={(e) => setClassFilter(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                  >
+                    {CLASS_FILTERS.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Subject
+                  </label>
+                  <select
+                    value={subjectFilter}
+                    onChange={(e) => setSubjectFilter(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                  >
+                    {SUBJECT_FILTERS.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-2xl font-extrabold text-slate-900">
+                    Chapter Content Library
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Lesson packs, previous year question content, and study material.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                  Showing {filteredWorks.length} item(s)
+                </div>
               </div>
 
               {error ? (
-                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
                   {error}
                 </div>
               ) : null}
 
               {loading ? (
-                <p className="text-gray-600">Loading works...</p>
-              ) : works.length === 0 ? (
-                <p className="text-gray-600">No works found.</p>
+                <p className="text-slate-600">Loading lesson packs...</p>
+              ) : filteredWorks.length === 0 ? (
+                <p className="text-slate-600">No content found.</p>
               ) : (
                 <div className="space-y-4">
-                  {works.map((work) => {
+                  {filteredWorks.map((work) => {
                     const typeLabel = formatType(work?.type);
-                    const answerKeyText = getAnswerKeyText(work);
                     const isDeleting = deletingId === work.id;
-                    const isTestPaper =
-                      String(work?.type || "").toLowerCase() === "test_paper";
+                    const isLessonPack =
+                      String(work?.type || "").toLowerCase() === "lesson_pack";
+                    const previewText = getPreviewText(work);
+                    const audioLink = getAudioLinkFromText(work);
 
                     return (
                       <div
                         key={work.id}
-                        className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+                        className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
                       >
-                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
-                            <h3 className="text-lg font-semibold text-gray-800">
-                              {work?.title || "Untitled Work"}
-                            </h3>
-
-                            <p className="mt-1 text-sm text-gray-600">
-                              {work?.class_name || "-"} | {getSubjectLabel(work)}
-                            </p>
-
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                            <div className="flex flex-wrap gap-2">
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                  isLessonPack
+                                    ? "bg-violet-100 text-violet-700"
+                                    : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
                                 {typeLabel}
                               </span>
 
-                              {work?.due_date ? (
-                                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                                  Due: {formatDate(work.due_date)}
-                                </span>
-                              ) : null}
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                                {work?.class_name || "-"}
+                              </span>
+
+                              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                                {getSubjectLabel(work)}
+                              </span>
+                            </div>
+
+                            <h3 className="mt-3 text-2xl font-extrabold text-slate-900">
+                              {work?.title || "Untitled Content"}
+                            </h3>
+
+                            <p className="mt-2 text-sm text-slate-600">
+                              <span className="font-semibold text-slate-800">
+                                Chapter:
+                              </span>{" "}
+                              {getChapterName(work)}
+                            </p>
+
+                            <p className="mt-1 text-sm text-slate-600">
+                              <span className="font-semibold text-slate-800">
+                                Created:
+                              </span>{" "}
+                              {formatDate(work?.created_at)}
+                            </p>
+
+                            <p className="mt-1 text-sm text-slate-600">
+                              <span className="font-semibold text-slate-800">
+                                Lesson Files:
+                              </span>{" "}
+                              {getFileCount(work)}
+                            </p>
+
+                            {audioLink ? (
+                              <p className="mt-1 break-all text-sm text-blue-700">
+                                <span className="font-semibold text-slate-800">
+                                  Audio Link:
+                                </span>{" "}
+                                {audioLink}
+                              </p>
+                            ) : null}
+
+                            <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                              <p className="mb-2 text-sm font-semibold text-slate-700">
+                                Quick Preview
+                              </p>
+                              <p className="line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                                {previewText}
+                              </p>
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 lg:w-[220px] lg:flex-col">
                             <button
                               type="button"
                               onClick={() => toggleExpand(work.id)}
-                              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
                             >
-                              {expandedId === work.id ? "Hide" : "View"}
+                              {expandedId === work.id ? "Hide Details" : "View Details"}
                             </button>
-
-                            {isTestPaper ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => openPrintWindow(work, "paper")}
-                                  className="rounded-xl bg-green-100 px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-200"
-                                >
-                                  Print Paper
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => openPrintWindow(work, "answer_key")}
-                                  className="rounded-xl bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-200"
-                                >
-                                  Print Answer Key
-                                </button>
-                              </>
-                            ) : null}
 
                             <button
                               type="button"
                               onClick={() => handleDeleteWork(work.id)}
                               disabled={isDeleting}
-                              className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-60"
+                              className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 transition hover:bg-red-200 disabled:opacity-60"
                             >
                               {isDeleting ? "Deleting..." : "Delete"}
                             </button>
                           </div>
                         </div>
 
-                        {expandedId === work.id && (
-                          <div className="mt-4 space-y-4">
-                            <div className="rounded-xl bg-gray-50 p-4">
-                              <h4 className="mb-2 font-semibold text-gray-800">
-                                Question Paper
-                              </h4>
+                        {expandedId === work.id ? (
+                          <div className="mt-5 space-y-4">
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="rounded-2xl bg-slate-50 p-4">
+                                <p className="text-sm font-semibold text-slate-700">
+                                  School Name
+                                </p>
+                                <p className="mt-2 text-sm text-slate-600">
+                                  {work?.school_name || SCHOOL_NAME_FALLBACK}
+                                </p>
+                              </div>
 
-                              <pre className="whitespace-pre-wrap text-sm text-gray-700">
-                                {getQuestionPaperText(work)}
+                              <div className="rounded-2xl bg-slate-50 p-4">
+                                <p className="text-sm font-semibold text-slate-700">
+                                  Keywords
+                                </p>
+                                <p className="mt-2 text-sm text-slate-600">
+                                  {work?.keywords || "-"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl bg-blue-50 p-4">
+                              <h4 className="mb-2 text-lg font-bold text-slate-900">
+                                Full Lesson Content
+                              </h4>
+                              <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                                {previewText}
                               </pre>
                             </div>
 
-                            {answerKeyText ? (
-                              <div className="rounded-xl bg-green-50 p-4">
-                                <h4 className="mb-2 font-semibold text-gray-800">
-                                  Answer Key
+                            {Array.isArray(work?.lesson_files) && work.lesson_files.length > 0 ? (
+                              <div className="rounded-2xl bg-violet-50 p-4">
+                                <h4 className="mb-3 text-lg font-bold text-slate-900">
+                                  Uploaded Lesson Files
                                 </h4>
 
-                                <pre className="whitespace-pre-wrap text-sm text-gray-700">
-                                  {answerKeyText}
-                                </pre>
+                                <div className="space-y-2">
+                                  {work.lesson_files.map((file, index) => (
+                                    <div
+                                      key={`${file?.url || file?.name || index}-${index}`}
+                                      className="rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                    >
+                                      <p className="font-semibold">
+                                        {file?.name || `File ${index + 1}`}
+                                      </p>
+                                      {file?.url ? (
+                                        <a
+                                          href={file.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="mt-1 inline-block break-all text-blue-600 hover:underline"
+                                        >
+                                          Open file
+                                        </a>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             ) : null}
 
-                            <div className="grid gap-3 text-sm text-gray-600 md:grid-cols-2">
-                              <p>
-                                <span className="font-semibold text-gray-700">
-                                  Created:
-                                </span>{" "}
-                                {formatDate(work?.created_at)}
-                              </p>
+                            {work?.question_file_url ? (
+                              <div className="rounded-2xl bg-emerald-50 p-4">
+                                <h4 className="mb-2 text-lg font-bold text-slate-900">
+                                  Previous Year Question File
+                                </h4>
+                                <a
+                                  href={work.question_file_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="break-all text-sm text-blue-600 hover:underline"
+                                >
+                                  {work.question_file_name || "Open question file"}
+                                </a>
+                              </div>
+                            ) : null}
 
-                              <p>
-                                <span className="font-semibold text-gray-700">
-                                  Due:
-                                </span>{" "}
-                                {formatDate(work?.due_date)}
-                              </p>
-
-                              <p>
-                                <span className="font-semibold text-gray-700">
-                                  Total Marks:
-                                </span>{" "}
-                                {work?.total_marks ?? "-"}
-                              </p>
-
-                              <p>
-                                <span className="font-semibold text-gray-700">
-                                  Question Count:
-                                </span>{" "}
-                                {work?.question_count ?? "-"}
-                              </p>
-                            </div>
+                            {work?.model_answer_file_url ? (
+                              <div className="rounded-2xl bg-amber-50 p-4">
+                                <h4 className="mb-2 text-lg font-bold text-slate-900">
+                                  Audio / Supporting File
+                                </h4>
+                                <a
+                                  href={work.model_answer_file_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="break-all text-sm text-blue-600 hover:underline"
+                                >
+                                  {work.model_answer_file_name || "Open support file"}
+                                </a>
+                              </div>
+                            ) : null}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </div>
       </div>

@@ -9,7 +9,7 @@ const CLASS_OPTIONS = ["9th", "10th"];
 const SUBJECT_OPTIONS = ["Science", "Maths", "History", "Geography", "English"];
 
 export default function AdminCreateLessonPackPage() {
-  const [adminName, setAdminName] = useState("Admin");
+  const [userName, setUserName] = useState("Admin");
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [className, setClassName] = useState("10th");
@@ -39,14 +39,15 @@ export default function AdminCreateLessonPackPage() {
     try {
       const user = JSON.parse(storedUser);
 
-      if (!user || (user.role !== "admin" && user.role !== "teacher")) {
+      if (!user) {
+        localStorage.removeItem("erp_user");
         window.location.href = "/login";
         return;
       }
 
-      setAdminName(user?.name || "Admin");
+      setUserName(user?.name || user?.full_name || "Admin");
     } catch (error) {
-      console.log("ADMIN CREATE LESSON PACK AUTH ERROR:", error);
+      console.log("LESSON PACK AUTH ERROR:", error);
       localStorage.removeItem("erp_user");
       window.location.href = "/login";
       return;
@@ -91,6 +92,18 @@ ${audioLink.trim()}`;
     return "";
   }
 
+  function resetForm() {
+    setChapterName("");
+    setTitle("");
+    setSimpleExplanation("");
+    setLessonSummary("");
+    setQuickRevision("");
+    setPreviousYearInsights("");
+    setImportantQuestions("");
+    setPracticeQuestions("");
+    setAudioLink("");
+  }
+
   async function handleSaveLessonPack(e) {
     e.preventDefault();
     setMessage("");
@@ -114,9 +127,9 @@ ${audioLink.trim()}`;
         class_name: className.trim(),
         subject_name: subject.trim(),
         subject: subject.trim(),
-        teacher_name: adminName,
-        due_date: null,
+        teacher_name: userName,
         teacher_id: null,
+        due_date: null,
         question_file_url: null,
         question_file_name: null,
         model_answer_file_url: null,
@@ -143,18 +156,9 @@ ${audioLink.trim()}`;
       }
 
       setMessage("Lesson pack created successfully.");
-
-      setChapterName("");
-      setTitle("");
-      setSimpleExplanation("");
-      setLessonSummary("");
-      setQuickRevision("");
-      setPreviousYearInsights("");
-      setImportantQuestions("");
-      setPracticeQuestions("");
-      setAudioLink("");
+      resetForm();
     } catch (error) {
-      console.log("UNEXPECTED SAVE LESSON PACK ERROR:", error);
+      console.log("UNEXPECTED LESSON PACK SAVE ERROR:", error);
       setMessage("Something went wrong while saving lesson pack.");
     } finally {
       setSaving(false);
@@ -173,7 +177,7 @@ ${audioLink.trim()}`;
 
   return (
     <>
-      <Header name={adminName} />
+      <Header name={userName} />
 
       <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
         <Sidebar role="admin" />
@@ -181,7 +185,7 @@ ${audioLink.trim()}`;
         <div className="flex-1 p-4 sm:p-6">
           <div className="mx-auto max-w-6xl space-y-6">
             <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
-              <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                 <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 text-white sm:p-8">
                   <div className="mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white/95">
                     AI Study Assistant
@@ -192,22 +196,22 @@ ${audioLink.trim()}`;
                   </h1>
 
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
-                    Create structured study content for Class 9th and 10th students.
-                    This lesson pack will appear inside the student learning dashboard.
+                    Add structured chapter content for students. These lesson packs
+                    will appear in the student dashboard for revision and study.
                   </p>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
-                      <h3 className="text-lg font-bold">Simple Learning</h3>
+                      <h3 className="text-lg font-bold">Simple Explanation</h3>
                       <p className="mt-1 text-sm text-white/85">
-                        Add easy explanation and summary for students.
+                        Add easy explanation in student-friendly language.
                       </p>
                     </div>
 
                     <div className="rounded-2xl border border-white/20 bg-white/10 p-4">
-                      <h3 className="text-lg font-bold">Exam Preparation</h3>
+                      <h3 className="text-lg font-bold">Smart Revision</h3>
                       <p className="mt-1 text-sm text-white/85">
-                        Add PYQ insights, revision, and important questions.
+                        Add quick revision, PYQ insights, and practice questions.
                       </p>
                     </div>
                   </div>
@@ -215,24 +219,24 @@ ${audioLink.trim()}`;
 
                 <div className="p-6 sm:p-8">
                   <h2 className="text-2xl font-extrabold text-slate-900">
-                    What gets saved
+                    Save Structure
                   </h2>
 
                   <div className="mt-4 space-y-3">
                     <div className="rounded-2xl bg-blue-50 p-4 text-sm text-slate-700">
-                      Type will be saved as <span className="font-bold">lesson_pack</span>
+                      Saved into <span className="font-bold">works</span> table
                     </div>
 
                     <div className="rounded-2xl bg-violet-50 p-4 text-sm text-slate-700">
-                      Content will be stored in structured section format
+                      Record type becomes <span className="font-bold">lesson_pack</span>
                     </div>
 
                     <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-slate-700">
-                      Student dashboard will read these records directly
+                      Student dashboard can read and show these lesson packs
                     </div>
 
                     <div className="rounded-2xl bg-amber-50 p-4 text-sm text-slate-700">
-                      Best for chapter explanation, revision, and practice
+                      Good for chapter explanation, revision, and exam prep
                     </div>
                   </div>
                 </div>
@@ -242,10 +246,10 @@ ${audioLink.trim()}`;
             <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-6">
                 <h2 className="text-2xl font-extrabold text-slate-900">
-                  Lesson Pack Form
+                  Lesson Pack Details
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Fill the chapter content carefully. This will become the student-facing lesson.
+                  Fill each section carefully. This content becomes the actual student lesson.
                 </p>
               </div>
 
@@ -320,7 +324,7 @@ ${audioLink.trim()}`;
                     value={simpleExplanation}
                     onChange={(e) => setSimpleExplanation(e.target.value)}
                     rows={6}
-                    placeholder="Write the lesson in easy student-friendly language..."
+                    placeholder="Write the chapter in easy language for students..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -333,7 +337,7 @@ ${audioLink.trim()}`;
                     value={lessonSummary}
                     onChange={(e) => setLessonSummary(e.target.value)}
                     rows={5}
-                    placeholder="Short chapter summary for quick understanding..."
+                    placeholder="Short summary of the lesson..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -346,7 +350,7 @@ ${audioLink.trim()}`;
                     value={quickRevision}
                     onChange={(e) => setQuickRevision(e.target.value)}
                     rows={5}
-                    placeholder="Add important revision points, formulas, keywords, dates, definitions..."
+                    placeholder="Important revision points, formulas, definitions, dates, keywords..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -359,7 +363,7 @@ ${audioLink.trim()}`;
                     value={previousYearInsights}
                     onChange={(e) => setPreviousYearInsights(e.target.value)}
                     rows={5}
-                    placeholder="Write lesson-wise previous year question pattern or important repeated areas..."
+                    placeholder="Mention repeated patterns or important areas from previous year papers..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -372,7 +376,7 @@ ${audioLink.trim()}`;
                     value={importantQuestions}
                     onChange={(e) => setImportantQuestions(e.target.value)}
                     rows={5}
-                    placeholder="Add important exam questions..."
+                    placeholder="Write important exam questions here..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -385,7 +389,7 @@ ${audioLink.trim()}`;
                     value={practiceQuestions}
                     onChange={(e) => setPracticeQuestions(e.target.value)}
                     rows={5}
-                    placeholder="Add chapter-based practice questions for students..."
+                    placeholder="Write practice questions for students..."
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -398,7 +402,7 @@ ${audioLink.trim()}`;
                     type="text"
                     value={audioLink}
                     onChange={(e) => setAudioLink(e.target.value)}
-                    placeholder="Paste audio explanation link if available"
+                    placeholder="Paste audio link if available"
                     className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -407,6 +411,7 @@ ${audioLink.trim()}`;
                   <h3 className="text-lg font-bold text-slate-900">
                     Preview Format
                   </h3>
+
                   <pre className="mt-3 whitespace-pre-wrap rounded-2xl bg-white p-4 text-xs leading-6 text-slate-700">
 {buildLessonContent()}
                   </pre>
@@ -435,8 +440,16 @@ ${audioLink.trim()}`;
 
                   <button
                     type="button"
-                    onClick={() => (window.location.href = "/admin-dashboard")}
+                    onClick={resetForm}
                     className="rounded-2xl bg-slate-200 px-6 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-300"
+                  >
+                    Reset
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => (window.location.href = "/admin-dashboard")}
+                    className="rounded-2xl bg-violet-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-violet-700"
                   >
                     Back to Dashboard
                   </button>

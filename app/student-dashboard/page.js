@@ -18,64 +18,105 @@ const SUBJECTS = [
     icon: "📐",
     color: "from-green-500 to-emerald-500",
     bg: "bg-green-50",
-    text: "Formulas, step-by-step practice, and problem-solving help.",
+    text: "Formulas, step-by-step solving, and practice support.",
   },
   {
     title: "History",
     icon: "📜",
     color: "from-amber-500 to-orange-500",
     bg: "bg-amber-50",
-    text: "Simple explanations, key points, and exam-focused answers.",
+    text: "Simple explanations, timelines, key points, and exam answers.",
   },
   {
     title: "Geography",
     icon: "🌍",
     color: "from-sky-500 to-blue-500",
     bg: "bg-sky-50",
-    text: "Processes, geographical reasons, maps, and quick revision.",
+    text: "Reasons, processes, maps, and quick revision.",
   },
   {
     title: "English",
     icon: "📘",
     color: "from-pink-500 to-rose-500",
     bg: "bg-pink-50",
-    text: "Grammar, writing support, summaries, and better understanding.",
+    text: "Grammar, summaries, writing help, and better understanding.",
   },
 ];
 
 const QUICK_ACTIONS = [
   {
-    title: "Learn",
-    description: "Study your chapters in simple language",
+    title: "Simple Explanation",
+    description: "Understand chapters in easy student-friendly language.",
     icon: "📖",
     bg: "bg-blue-50",
   },
   {
     title: "Quick Revision",
-    description: "Revise important points before exams",
+    description: "Revise important points quickly before exams.",
     icon: "⚡",
     bg: "bg-violet-50",
   },
   {
     title: "Previous Year Questions",
-    description: "Practice lesson-wise important questions",
+    description: "Study important lesson-wise past paper patterns.",
     icon: "📝",
     bg: "bg-emerald-50",
   },
   {
-    title: "Audio Lessons",
-    description: "Learn through voice-based explanation",
+    title: "Audio Learning",
+    description: "Listen to chapter-based explanation and revision.",
     icon: "🎧",
     bg: "bg-amber-50",
   },
 ];
 
+function formatDate(value) {
+  if (!value) return "-";
+
+  try {
+    return new Date(value).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return value;
+  }
+}
+
+function getSubjectLabel(item) {
+  return item?.subject || item?.subject_name || "Other";
+}
+
+function getPreviewText(item) {
+  return (
+    item?.question_text ||
+    item?.question ||
+    item?.description ||
+    "No lesson preview available."
+  );
+}
+
+function extractSection(fullText, label) {
+  const text = String(fullText || "");
+  const safeLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(
+    `${safeLabel}:\\n([\\s\\S]*?)(?=\\n\\n(?:Simple Explanation|Lesson Summary|Quick Revision|Previous Year Question Insights|Important Questions|Practice Questions|Audio Link):|$)`,
+    "i"
+  );
+
+  const match = text.match(regex);
+  return match?.[1]?.trim() || "";
+}
+
 export default function StudentDashboard() {
   const [studentName, setStudentName] = useState("Student");
   const [className, setClassName] = useState("");
-  const [groupedWorks, setGroupedWorks] = useState({});
-  const [submissionMap, setSubmissionMap] = useState({});
   const [isAllowed, setIsAllowed] = useState(false);
+
+  const [lessons, setLessons] = useState([]);
+  const [groupedLessons, setGroupedLessons] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -107,118 +148,54 @@ export default function StudentDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!isAllowed || !className || !studentName) return;
-    fetchData();
-  }, [isAllowed, className, studentName]);
+    if (!isAllowed || !className) return;
+    fetchLessons();
+  }, [isAllowed, className]);
 
-  function isSubmissionNewer(currentItem, nextItem) {
-    const currentAttempt = Number(currentItem?.attempt_no || 0);
-    const nextAttempt = Number(nextItem?.attempt_no || 0);
+  async function fetchLessons() {
+    setLoading(true);
 
-    if (nextAttempt > currentAttempt) return true;
-    if (nextAttempt < currentAttempt) return false;
-
-    const currentTime = new Date(
-      currentItem?.submitted_at || currentItem?.created_at || 0
-    ).getTime();
-    const nextTime = new Date(
-      nextItem?.submitted_at || nextItem?.created_at || 0
-    ).getTime();
-
-    return nextTime > currentTime;
-  }
-
-  async function fetchData() {
     try {
-      const { data: worksData, error: worksError } = await supabase
+      const { data, error } = await supabase
         .from("works")
         .select("*")
         .eq("class_name", className)
+        .eq("type", "lesson_pack")
         .order("created_at", { ascending: false });
 
-      if (worksError) {
-        console.log("FETCH WORKS ERROR:", worksError);
-        setGroupedWorks({});
+      if (error) {
+        console.log("FETCH LESSONS ERROR:", error);
+        setLessons([]);
+        setGroupedLessons({});
       } else {
-        const grouped = {};
+        const lessonList = data || [];
+        setLessons(lessonList);
 
-        (worksData || []).forEach((work) => {
-          const subject = work.subject_name || work.subject || "Other";
+        const grouped = {};
+        lessonList.forEach((item) => {
+          const subject = getSubjectLabel(item);
 
           if (!grouped[subject]) {
             grouped[subject] = [];
           }
 
-          grouped[subject].push(work);
+          grouped[subject].push(item);
         });
 
-        setGroupedWorks(grouped);
-      }
-
-      const { data: submissionsData, error: submissionsError } = await supabase
-        .from("submissions")
-        .select("*")
-        .eq("student_name", studentName)
-        .order("submitted_at", { ascending: false });
-
-      if (submissionsError) {
-        console.log("FETCH SUBMISSIONS ERROR:", submissionsError);
-        setSubmissionMap({});
-      } else {
-        const map = {};
-
-        (submissionsData || []).forEach((submission) => {
-          if (!submission?.work_id) return;
-
-          const existing = map[submission.work_id];
-
-          if (!existing || isSubmissionNewer(existing, submission)) {
-            map[submission.work_id] = submission;
-          }
-        });
-
-        setSubmissionMap(map);
+        setGroupedLessons(grouped);
       }
     } catch (error) {
-      console.log("UNEXPECTED FETCH DATA ERROR:", error);
-      setGroupedWorks({});
-      setSubmissionMap({});
+      console.log("UNEXPECTED LESSON FETCH ERROR:", error);
+      setLessons([]);
+      setGroupedLessons({});
+    } finally {
+      setLoading(false);
     }
   }
 
-  function getWorkTypeLabel(work) {
-    const rawType = String(work?.type || work?.work_type || "")
-      .trim()
-      .toLowerCase();
-
-    if (rawType === "classwork" || rawType === "class work") {
-      return "Class Work";
-    }
-
-    return "Homework";
-  }
-
-  function getSubmissionStatus(submission) {
-    if (!submission) return "Pending";
-
-    const isSubmitted = !!(
-      submission.answer_text ||
-      submission.file_url ||
-      submission.submitted_at
-    );
-
-    if (!isSubmitted) return "Pending";
-
-    const rawStatus = String(submission.status || "").trim().toLowerCase();
-
-    if (rawStatus === "checked") return "Checked";
-
-    return "Submitted";
-  }
-
-  function openWork(workId) {
-    if (!workId) return;
-    window.location.href = `/student-work/${workId}`;
+  function openLesson(id) {
+    if (!id) return;
+    window.location.href = `/lesson/${id}`;
   }
 
   function handleLogout() {
@@ -226,41 +203,26 @@ export default function StudentDashboard() {
     window.location.href = "/login";
   }
 
-  const allWorks = useMemo(() => {
-    return Object.values(groupedWorks).flat();
-  }, [groupedWorks]);
-
   const stats = useMemo(() => {
-    let pending = 0;
-    let submitted = 0;
-    let checked = 0;
+    const totalLessons = lessons.length;
+    const totalSubjects = Object.keys(groupedLessons).length;
 
-    allWorks.forEach((work) => {
-      const submission = submissionMap[work.id];
-      const status = getSubmissionStatus(submission);
+    const lessonsWithAudio = lessons.filter((item) => {
+      const fullText = getPreviewText(item);
+      return !!extractSection(fullText, "Audio Link");
+    }).length;
 
-      if (status === "Pending") pending += 1;
-      if (status === "Submitted" || status === "Checked") submitted += 1;
-      if (status === "Checked") checked += 1;
-    });
+    const recentLessons = lessons.slice(0, 6).length;
 
     return {
-      total: allWorks.length,
-      pending,
-      submitted,
-      checked,
+      totalLessons,
+      totalSubjects,
+      lessonsWithAudio,
+      recentLessons,
     };
-  }, [allWorks, submissionMap]);
+  }, [lessons, groupedLessons]);
 
-  const homeworkCount = allWorks.filter(
-    (work) => getWorkTypeLabel(work) === "Homework"
-  ).length;
-
-  const classWorkCount = allWorks.filter(
-    (work) => getWorkTypeLabel(work) === "Class Work"
-  ).length;
-
-  const recentWorks = allWorks.slice(0, 6);
+  const recentLessons = useMemo(() => lessons.slice(0, 6), [lessons]);
 
   if (!isAllowed) return null;
 
@@ -289,9 +251,9 @@ export default function StudentDashboard() {
                   </p>
 
                   <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
-                    Simple learning, smart revision, better exam preparation.
-                    Continue your studies with chapter-based learning, practice,
-                    revision, and important questions.
+                    Learn chapter by chapter with simple explanation, smart
+                    revision, important questions, practice support, and audio-based
+                    study.
                   </p>
 
                   <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -316,36 +278,37 @@ export default function StudentDashboard() {
                       Study Overview
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Track your current work, progress, and pending tasks from one place.
+                      Access your chapter lessons, revision support, and exam-ready
+                      content from one place.
                     </p>
                   </div>
 
                   <div className="mt-6 grid grid-cols-2 gap-4">
                     <div className="rounded-2xl bg-slate-50 p-4">
-                      <p className="text-sm text-slate-500">Total Work</p>
+                      <p className="text-sm text-slate-500">Total Lessons</p>
                       <h3 className="mt-2 text-3xl font-extrabold text-slate-900">
-                        {stats.total}
+                        {stats.totalLessons}
                       </h3>
                     </div>
 
                     <div className="rounded-2xl bg-blue-50 p-4">
-                      <p className="text-sm text-slate-500">Homework</p>
+                      <p className="text-sm text-slate-500">Subjects</p>
                       <h3 className="mt-2 text-3xl font-extrabold text-blue-600">
-                        {homeworkCount}
+                        {stats.totalSubjects}
                       </h3>
                     </div>
 
-                    <div className="rounded-2xl bg-purple-50 p-4">
-                      <p className="text-sm text-slate-500">Class Work</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-purple-600">
-                        {classWorkCount}
+                    <div className="rounded-2xl bg-violet-50 p-4">
+                      <p className="text-sm text-slate-500">Recent Lessons</p>
+                      <h3 className="mt-2 text-3xl font-extrabold text-violet-600">
+                        {stats.recentLessons}
                       </h3>
                     </div>
 
-                    <div className="rounded-2xl bg-green-50 p-4">
-                      <p className="text-sm text-slate-500">Checked</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-green-600">
-                        {stats.checked}
+                    <div className="rounded-2xl bg-amber-50 p-4">
+                      <p className="text-sm text-slate-500">Audio Ready</p>
+                      <h3 className="mt-2 text-3xl font-extrabold text-amber-600">
+                        {stats.lessonsWithAudio}
                       </h3>
                     </div>
                   </div>
@@ -398,126 +361,77 @@ export default function StudentDashboard() {
               <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-5">
                   <h2 className="text-2xl font-extrabold text-slate-900">
-                    Recent Homework & Class Work
+                    Recent Lessons
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Continue pending work and review checked submissions.
+                    Open your latest chapter packs and continue learning.
                   </p>
                 </div>
 
-                {recentWorks.length === 0 ? (
-                  <p className="text-sm text-slate-500">No work available yet.</p>
+                {loading ? (
+                  <p className="text-sm text-slate-500">Loading lessons...</p>
+                ) : recentLessons.length === 0 ? (
+                  <p className="text-sm text-slate-500">No lesson packs available yet.</p>
                 ) : (
                   <div className="space-y-4">
-                    {recentWorks.map((work) => {
-                      const submission = submissionMap[work.id];
-                      const typeLabel = getWorkTypeLabel(work);
-                      const status = getSubmissionStatus(submission);
-                      const isChecked = status === "Checked";
+                    {recentLessons.map((lesson) => {
+                      const previewText = getPreviewText(lesson);
+                      const summary =
+                        extractSection(previewText, "Lesson Summary") ||
+                        extractSection(previewText, "Simple Explanation") ||
+                        previewText;
 
                       return (
                         <div
-                          key={work.id}
+                          key={lesson.id}
                           className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
                               <h3 className="text-lg font-bold text-slate-900">
-                                {work.title || typeLabel}
+                                {lesson.title || "Untitled Lesson"}
                               </h3>
+
                               <p className="mt-1 text-sm text-slate-600">
-                                {work.question || work.description || "-"}
+                                <span className="font-semibold text-slate-800">
+                                  Subject:
+                                </span>{" "}
+                                {getSubjectLabel(lesson)}
+                              </p>
+
+                              <p className="mt-1 text-sm text-slate-600">
+                                <span className="font-semibold text-slate-800">
+                                  Chapter:
+                                </span>{" "}
+                                {lesson.chapter_name || "-"}
+                              </p>
+
+                              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+                                {summary}
                               </p>
 
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <span
-                                  className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                    typeLabel === "Class Work"
-                                      ? "bg-purple-100 text-purple-700"
-                                      : "bg-blue-100 text-blue-700"
-                                  }`}
-                                >
-                                  {typeLabel}
+                                <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">
+                                  Lesson Pack
                                 </span>
 
-                                <span
-                                  className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                    status === "Checked"
-                                      ? "bg-green-100 text-green-700"
-                                      : status === "Submitted"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-red-100 text-red-700"
-                                  }`}
-                                >
-                                  {status}
+                                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                                  {getSubjectLabel(lesson)}
+                                </span>
+
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                                  {formatDate(lesson.created_at)}
                                 </span>
                               </div>
-
-                              {submission ? (
-                                <div className="mt-3 grid grid-cols-1 gap-1 text-sm text-slate-600 sm:grid-cols-2">
-                                  <p>
-                                    <span className="font-semibold text-slate-800">
-                                      Score:
-                                    </span>{" "}
-                                    {submission.score ?? "-"}
-                                  </p>
-                                  <p>
-                                    <span className="font-semibold text-slate-800">
-                                      Attempt:
-                                    </span>{" "}
-                                    {submission.attempt_no || 1}
-                                  </p>
-                                  <p className="sm:col-span-2">
-                                    <span className="font-semibold text-slate-800">
-                                      Feedback:
-                                    </span>{" "}
-                                    {submission.feedback || "-"}
-                                  </p>
-
-                                  {submission.mistake_reason ? (
-                                    <p className="sm:col-span-2 text-red-600">
-                                      <span className="font-semibold">
-                                        Mistake:
-                                      </span>{" "}
-                                      {submission.mistake_reason}
-                                    </p>
-                                  ) : null}
-
-                                  {submission.corrected_answer ? (
-                                    <p className="sm:col-span-2 text-blue-600">
-                                      <span className="font-semibold">
-                                        Correct Answer:
-                                      </span>{" "}
-                                      {submission.corrected_answer}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ) : null}
                             </div>
 
                             <div className="sm:shrink-0">
-                              {!submission ? (
-                                <button
-                                  onClick={() => openWork(work.id)}
-                                  className="w-full rounded-2xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700 sm:w-auto"
-                                >
-                                  Submit {typeLabel}
-                                </button>
-                              ) : !isChecked ? (
-                                <button
-                                  onClick={() => openWork(work.id)}
-                                  className="w-full rounded-2xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600 sm:w-auto"
-                                >
-                                  Retry {typeLabel}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => openWork(work.id)}
-                                  className="w-full rounded-2xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700 sm:w-auto"
-                                >
-                                  View {typeLabel}
-                                </button>
-                              )}
+                              <button
+                                onClick={() => openLesson(lesson.id)}
+                                className="w-full rounded-2xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700 sm:w-auto"
+                              >
+                                Open Lesson
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -530,42 +444,10 @@ export default function StudentDashboard() {
               <div className="space-y-6">
                 <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
                   <h2 className="text-2xl font-extrabold text-slate-900">
-                    Progress Snapshot
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    A quick look at your current submission progress.
-                  </p>
-
-                  <div className="mt-5 space-y-4">
-                    <div className="rounded-2xl bg-red-50 p-4">
-                      <p className="text-sm text-slate-500">Pending</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-red-600">
-                        {stats.pending}
-                      </h3>
-                    </div>
-
-                    <div className="rounded-2xl bg-amber-50 p-4">
-                      <p className="text-sm text-slate-500">Submitted</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-amber-600">
-                        {stats.submitted}
-                      </h3>
-                    </div>
-
-                    <div className="rounded-2xl bg-emerald-50 p-4">
-                      <p className="text-sm text-slate-500">Checked</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-emerald-600">
-                        {stats.checked}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                  <h2 className="text-2xl font-extrabold text-slate-900">
                     Study Support
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    These are the core directions for the new learning platform.
+                    Core learning blocks available inside each lesson pack.
                   </p>
 
                   <div className="mt-5 space-y-3">
@@ -580,114 +462,114 @@ export default function StudentDashboard() {
                       <span className="font-bold text-slate-900">
                         Smart Revision:
                       </span>{" "}
-                      Focus on important exam-ready points.
+                      Revise quickly before exams.
                     </div>
 
                     <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-slate-700">
                       <span className="font-bold text-slate-900">
                         Previous Year Questions:
                       </span>{" "}
-                      Practice recurring question styles.
+                      Learn recurring question patterns.
                     </div>
 
                     <div className="rounded-2xl bg-amber-50 p-4 text-sm text-slate-700">
                       <span className="font-bold text-slate-900">
-                        Audio Lessons:
+                        Audio Learning:
                       </span>{" "}
-                      Learn through voice-based chapter explanation.
+                      Study with voice-based explanation.
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-2xl font-extrabold text-slate-900">
+                    Learning Tip
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Best way to use this platform.
+                  </p>
+
+                  <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+                    Start with <span className="font-bold">Simple Explanation</span>,
+                    then read <span className="font-bold">Lesson Summary</span>,
+                    revise using <span className="font-bold">Quick Revision</span>,
+                    and finally practice <span className="font-bold">Important Questions</span>
+                    {" "}and <span className="font-bold">Practice Questions</span>.
                   </div>
                 </div>
               </div>
             </section>
 
-            {Object.keys(groupedWorks).length > 0 ? (
-              <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5">
-                  <h2 className="text-2xl font-extrabold text-slate-900">
-                    Subject-wise Work
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    View all available homework and class work grouped by subject.
-                  </p>
-                </div>
+            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5">
+                <h2 className="text-2xl font-extrabold text-slate-900">
+                  Subject-wise Lessons
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Open all available lesson packs grouped by subject.
+                </p>
+              </div>
 
+              {loading ? (
+                <p className="text-sm text-slate-500">Loading subject-wise lessons...</p>
+              ) : Object.keys(groupedLessons).length === 0 ? (
+                <p className="text-sm text-slate-500">No lesson packs available for your class yet.</p>
+              ) : (
                 <div className="space-y-8">
-                  {Object.keys(groupedWorks).map((subject) => (
+                  {Object.keys(groupedLessons).map((subject) => (
                     <div key={subject}>
                       <h3 className="mb-3 text-xl font-bold text-blue-700">
                         {subject}
                       </h3>
 
                       <div className="space-y-3">
-                        {groupedWorks[subject].map((work) => {
-                          const submission = submissionMap[work.id];
-                          const typeLabel = getWorkTypeLabel(work);
-                          const status = getSubmissionStatus(submission);
-                          const isChecked = status === "Checked";
+                        {groupedLessons[subject].map((lesson) => {
+                          const previewText = getPreviewText(lesson);
+                          const summary =
+                            extractSection(previewText, "Lesson Summary") ||
+                            extractSection(previewText, "Simple Explanation") ||
+                            previewText;
 
                           return (
                             <div
-                              key={work.id}
+                              key={lesson.id}
                               className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
                             >
                               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div className="min-w-0">
                                   <h4 className="text-lg font-bold text-slate-900">
-                                    {work.title || typeLabel}
+                                    {lesson.title || "Untitled Lesson"}
                                   </h4>
+
                                   <p className="mt-1 text-sm text-slate-600">
-                                    {work.question || work.description || "-"}
+                                    <span className="font-semibold text-slate-800">
+                                      Chapter:
+                                    </span>{" "}
+                                    {lesson.chapter_name || "-"}
+                                  </p>
+
+                                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+                                    {summary}
                                   </p>
 
                                   <div className="mt-3 flex flex-wrap gap-2">
-                                    <span
-                                      className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                        typeLabel === "Class Work"
-                                          ? "bg-purple-100 text-purple-700"
-                                          : "bg-blue-100 text-blue-700"
-                                      }`}
-                                    >
-                                      {typeLabel}
+                                    <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">
+                                      Lesson Pack
                                     </span>
 
-                                    <span
-                                      className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                        status === "Checked"
-                                          ? "bg-green-100 text-green-700"
-                                          : status === "Submitted"
-                                          ? "bg-amber-100 text-amber-700"
-                                          : "bg-red-100 text-red-700"
-                                      }`}
-                                    >
-                                      {status}
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                                      {formatDate(lesson.created_at)}
                                     </span>
                                   </div>
                                 </div>
 
                                 <div className="md:shrink-0">
-                                  {!submission ? (
-                                    <button
-                                      onClick={() => openWork(work.id)}
-                                      className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
-                                    >
-                                      Submit {typeLabel}
-                                    </button>
-                                  ) : !isChecked ? (
-                                    <button
-                                      onClick={() => openWork(work.id)}
-                                      className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-amber-600"
-                                    >
-                                      Retry {typeLabel}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => openWork(work.id)}
-                                      className="rounded-2xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700"
-                                    >
-                                      View {typeLabel}
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => openLesson(lesson.id)}
+                                    className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700"
+                                  >
+                                    Open Lesson
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -697,8 +579,8 @@ export default function StudentDashboard() {
                     </div>
                   ))}
                 </div>
-              </section>
-            ) : null}
+              )}
+            </section>
           </div>
         </div>
       </div>

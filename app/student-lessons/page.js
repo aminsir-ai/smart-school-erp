@@ -1,5 +1,8 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -35,8 +38,8 @@ function parseGeneratedLessonData(rawValue) {
   try {
     const parsed = JSON.parse(String(rawValue));
     if (parsed && typeof parsed === "object") return parsed;
-  } catch {
-    // ignore
+  } catch (error) {
+    console.log("PARSE GENERATED LESSON DATA ERROR:", error);
   }
 
   return {};
@@ -84,29 +87,20 @@ function getChapterName(item) {
 export default function StudentLessonsPage() {
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
-
   const [selectedSubject, setSelectedSubject] = useState("All");
   const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const subjectFromUrl = normalizeText(urlParams.get("subject"), "All");
-      setSelectedSubject(subjectFromUrl || "All");
-    } catch (error) {
-      console.log("URL PARAM READ ERROR:", error);
-      setSelectedSubject("All");
-    }
+    setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!mounted) return;
 
     try {
       const rawUser =
@@ -120,14 +114,9 @@ export default function StudentLessonsPage() {
       }
 
       const parsedUser = JSON.parse(rawUser);
-      if (!parsedUser) {
-        router.replace("/login");
-        return;
-      }
-
       const role = String(parsedUser?.role || "").toLowerCase();
 
-      if (role !== "student") {
+      if (!parsedUser || role !== "student") {
         router.replace("/login");
         return;
       }
@@ -140,30 +129,13 @@ export default function StudentLessonsPage() {
       localStorage.removeItem("user");
       router.replace("/login");
     }
-  }, [router]);
+  }, [mounted, router]);
 
   useEffect(() => {
     if (!user) return;
     fetchLessons();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-
-    if (selectedSubject && selectedSubject !== "All") {
-      params.set("subject", selectedSubject);
-    } else {
-      params.delete("subject");
-    }
-
-    const query = params.toString();
-    const nextUrl = query ? `/student-lessons?${query}` : "/student-lessons";
-
-    window.history.replaceState({}, "", nextUrl);
-  }, [selectedSubject]);
 
   async function fetchLessons() {
     try {
@@ -185,7 +157,9 @@ export default function StudentLessonsPage() {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       setLessons(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -244,14 +218,15 @@ export default function StudentLessonsPage() {
     return lessons.filter((item) => {
       const parsed = parseGeneratedLessonData(item?.generated_paper_text);
 
-      return (
+      return Boolean(
         normalizeText(parsed?.audioLink) ||
-        normalizeText(item?.audio_link) ||
-        normalizeText(item?.audio_url)
+          normalizeText(item?.audio_link) ||
+          normalizeText(item?.audio_url)
       );
     }).length;
   }, [lessons]);
 
+  if (!mounted) return null;
   if (!user) return null;
 
   return (
@@ -282,8 +257,7 @@ export default function StudentLessonsPage() {
 
                   <p className="mt-8 max-w-3xl text-lg leading-9 text-white/95">
                     Browse chapter-wise lesson packs, revise key topics, open the
-                    original lesson PDF, and study from student-friendly content
-                    prepared for exam support.
+                    original lesson PDF, and study from student-friendly content.
                   </p>
 
                   <div className="mt-8 flex flex-wrap gap-3">

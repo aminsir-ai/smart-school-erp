@@ -5,79 +5,14 @@ import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
-const SUBJECT_OPTIONS = ["All", "Science", "Maths", "History", "Geography", "English"];
-
-function formatDate(value) {
-  if (!value) return "-";
-
-  try {
-    return new Date(value).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return value;
-  }
-}
-
-function getLessonText(item) {
-  return item?.question || item?.generated_paper_text || item?.description || "";
-}
-
-function extractSection(fullText, label) {
-  const text = String(fullText || "");
-  const safeLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  const regex = new RegExp(
-    `${safeLabel}:\\n([\\s\\S]*?)(?=\\n\\n(?:Chapter Name|Simple Explanation|Lesson Summary|Quick Revision|Previous Year Question Insights|Important Questions|Practice Questions|Audio Link):|$)`,
-    "i"
-  );
-
-  const match = text.match(regex);
-  return match?.[1]?.trim() || "";
-}
-
-function getPreviewText(item) {
-  const fullText = getLessonText(item);
-
-  return (
-    extractSection(fullText, "Lesson Summary") ||
-    extractSection(fullText, "Simple Explanation") ||
-    "No preview available."
-  );
-}
-
-function getChapterName(item) {
-  const fullText = getLessonText(item);
-  return extractSection(fullText, "Chapter Name") || "-";
-}
-
-function hasAudio(item) {
-  const fullText = getLessonText(item);
-  return !!extractSection(fullText, "Audio Link");
-}
-
-function isLessonPack(item) {
-  const typeText = String(item?.type || "").trim().toLowerCase();
-
-  return (
-    typeText === "lesson_pack" ||
-    typeText === "lesson pack" ||
-    typeText === "lessonpack"
-  );
-}
-
 export default function StudentLessonsPage() {
-  const [studentName, setStudentName] = useState("Student");
-  const [className, setClassName] = useState("");
-  const [isAllowed, setIsAllowed] = useState(false);
-
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [lessons, setLessons] = useState([]);
-
-  const [subjectFilter, setSubjectFilter] = useState("All");
+  const [filteredLessons, setFilteredLessons] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState("All");
   const [searchText, setSearchText] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("erp_user");
@@ -88,290 +23,311 @@ export default function StudentLessonsPage() {
     }
 
     try {
-      const user = JSON.parse(storedUser);
+      const parsedUser = JSON.parse(storedUser);
+      const role = (parsedUser?.role || "").toLowerCase();
 
-      if (!user || user.role !== "student") {
+      if (!["student", "admin", "management"].includes(role)) {
         window.location.href = "/login";
         return;
       }
 
-      setStudentName(user?.name || "Student");
-      setClassName(user?.class_name || user?.class || "");
-      setIsAllowed(true);
+      setUser(parsedUser);
+
+      const params = new URLSearchParams(window.location.search);
+      const subjectFromQuery = params.get("subject");
+
+      if (subjectFromQuery) {
+        setSelectedSubject(subjectFromQuery);
+      }
+
+      fetchLessons(parsedUser, subjectFromQuery || "All");
     } catch (error) {
-      console.log("STUDENT LESSONS AUTH ERROR:", error);
-      localStorage.removeItem("erp_user");
+      console.log("STUDENT LESSON USER PARSE ERROR:", error);
       window.location.href = "/login";
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const querySubject = params.get("subject");
-
-    if (!querySubject) {
-      setSubjectFilter("All");
-      return;
-    }
-
-    const matchedSubject = SUBJECT_OPTIONS.find(
-      (item) => item.toLowerCase() === querySubject.toLowerCase()
-    );
-
-    if (matchedSubject) {
-      setSubjectFilter(matchedSubject);
-    } else {
-      setSubjectFilter("All");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isAllowed) return;
-    fetchLessons();
-  }, [isAllowed, className]);
-
-  async function fetchLessons() {
-    setLoading(true);
-
+  async function fetchLessons(currentUser, subjectFromQuery = "All") {
     try {
+      setLoading(true);
+
+      const studentClass =
+        currentUser?.class_name ||
+        currentUser?.class ||
+        currentUser?.standard ||
+        "";
+
       let query = supabase
         .from("works")
         .select("*")
+        .eq("type", "lesson_pack")
         .order("created_at", { ascending: false });
 
-      if (className) {
-        query = query.eq("class_name", className);
+      if (studentClass && (currentUser?.role || "").toLowerCase() === "student") {
+        query = query.eq("class_name", studentClass);
       }
 
       const { data, error } = await query;
 
       if (error) {
-        console.log("FETCH STUDENT LESSONS ERROR:", error);
+        console.log("LESSON FETCH ERROR:", error);
         setLessons([]);
+        setFilteredLessons([]);
+        setSubjects([]);
         return;
       }
 
-      const rows = data || [];
-      const lessonRows = rows.filter((item) => isLessonPack(item));
-      setLessons(lessonRows);
+      const lessonData = Array.isArray(data) ? data : [];
+
+      setLessons(lessonData);
+
+      const uniqueSubjects = [
+        "All",
+        ...new Set(
+          lessonData
+            .map((item) => (item?.subject_name || item?.subject || "").trim())
+            .filter(Boolean)
+        ),
+      ];
+
+      setSubjects(uniqueSubjects);
+
+      applyFilters(lessonData, subjectFromQuery || selectedSubject, searchText);
     } catch (error) {
-      console.log("UNEXPECTED STUDENT LESSONS ERROR:", error);
+      console.log("FETCH LESSONS EXCEPTION:", error);
       setLessons([]);
+      setFilteredLessons([]);
+      setSubjects(["All"]);
     } finally {
       setLoading(false);
     }
   }
 
-  function openLesson(id) {
-    if (!id) return;
-    window.location.href = `/lesson/${id}`;
+  function applyFilters(sourceLessons, subjectValue, searchValue) {
+    const subjectFilter = (subjectValue || "All").trim().toLowerCase();
+    const searchFilter = (searchValue || "").trim().toLowerCase();
+
+    const result = sourceLessons.filter((lesson) => {
+      const lessonSubject = (
+        lesson?.subject_name ||
+        lesson?.subject ||
+        ""
+      ).toLowerCase();
+
+      const title = (lesson?.title || "").toLowerCase();
+      const chapter = (lesson?.chapter_name || "").toLowerCase();
+      const question = (lesson?.question || "").toLowerCase();
+
+      const matchesSubject =
+        subjectFilter === "all" || lessonSubject === subjectFilter;
+
+      const matchesSearch =
+        !searchFilter ||
+        title.includes(searchFilter) ||
+        chapter.includes(searchFilter) ||
+        question.includes(searchFilter);
+
+      return matchesSubject && matchesSearch;
+    });
+
+    setFilteredLessons(result);
   }
 
-  const filteredLessons = useMemo(() => {
+  useEffect(() => {
+    applyFilters(lessons, selectedSubject, searchText);
+  }, [selectedSubject, searchText, lessons]);
+
+  const totalLessons = lessons.length;
+
+  const totalSubjects = useMemo(() => {
+    const onlySubjects = subjects.filter((item) => item !== "All");
+    return onlySubjects.length;
+  }, [subjects]);
+
+  const audioReadyCount = useMemo(() => {
     return lessons.filter((item) => {
-      const subject = String(item?.subject || item?.subject_name || "").trim();
-      const title = String(item?.title || "").toLowerCase();
-      const preview = getPreviewText(item).toLowerCase();
-      const chapterName = getChapterName(item).toLowerCase();
-      const search = searchText.trim().toLowerCase();
+      const audioLink =
+        item?.audio_url ||
+        item?.audio_link ||
+        item?.audio_file_url ||
+        "";
+      return Boolean(audioLink);
+    }).length;
+  }, [lessons]);
 
-      const subjectMatch =
-        subjectFilter === "All" ||
-        subject.toLowerCase() === subjectFilter.toLowerCase();
-
-      const searchMatch =
-        !search ||
-        title.includes(search) ||
-        preview.includes(search) ||
-        chapterName.includes(search) ||
-        subject.toLowerCase().includes(search);
-
-      return subjectMatch && searchMatch;
-    });
-  }, [lessons, subjectFilter, searchText]);
-
-  const stats = useMemo(() => {
-    return {
-      total: lessons.length,
-      filtered: filteredLessons.length,
-      audioReady: lessons.filter((item) => hasAudio(item)).length,
-    };
-  }, [lessons, filteredLessons]);
-
-  if (!isAllowed) return null;
+  const studentClassLabel =
+    user?.class_name || user?.class || user?.standard || "All Classes";
 
   return (
-    <>
-      <Header name={studentName} />
+    <div className="min-h-screen bg-slate-200">
+      <Header name={user?.name || "User"} />
 
-      <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
-        <Sidebar role="student" />
+      <div className="flex">
+        <div className="hidden md:block">
+          <Sidebar />
+        </div>
 
-        <div className="flex-1 p-4 sm:p-6">
-          <div className="mx-auto max-w-7xl space-y-6">
-            <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
-              <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 text-white sm:p-8">
-                  <div className="mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white/95">
-                    AI Study Assistant
-                  </div>
-
-                  <h1 className="text-3xl font-extrabold sm:text-4xl">
-                    Student Lessons
-                  </h1>
-
-                  <p className="mt-3 text-sm font-medium text-blue-50 sm:text-base">
-                    Class: {className || "Not assigned"}
-                  </p>
-
-                  <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
-                    Browse chapter-wise lesson packs, revise key topics, and open
-                    student-friendly study content prepared for exam support.
-                  </p>
-
-                  {subjectFilter !== "All" ? (
-                    <div className="mt-5 inline-flex rounded-full bg-white/15 px-4 py-2 text-sm font-bold text-white">
-                      Subject Filter: {subjectFilter}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="p-6 sm:p-8">
-                  <h2 className="text-2xl font-extrabold text-slate-900">
-                    Lesson Overview
-                  </h2>
-
-                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-1">
-                    <div className="rounded-2xl bg-slate-50 p-4">
-                      <p className="text-sm text-slate-500">Total Lessons</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-slate-900">
-                        {stats.total}
-                      </h3>
-                    </div>
-
-                    <div className="rounded-2xl bg-blue-50 p-4">
-                      <p className="text-sm text-slate-500">Showing</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-blue-600">
-                        {stats.filtered}
-                      </h3>
-                    </div>
-
-                    <div className="rounded-2xl bg-amber-50 p-4">
-                      <p className="text-sm text-slate-500">Audio Ready</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-amber-600">
-                        {stats.audioReady}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900">
-                    Browse Lessons
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Filter by subject or search by title, chapter, or topic.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">
-                      Subject
-                    </label>
-                    <select
-                      value={subjectFilter}
-                      onChange={(e) => setSubjectFilter(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                    >
-                      {SUBJECT_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">
-                      Search
-                    </label>
-                    <input
-                      type="text"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      placeholder="Search lessons..."
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                    />
-                  </div>
-                </div>
+        <main className="flex-1 p-4 md:p-8">
+          <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+            <div className="rounded-[2rem] bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8 text-white shadow-xl">
+              <div className="mb-5 inline-block rounded-full bg-white/15 px-6 py-3 text-sm font-bold uppercase tracking-[0.25em]">
+                AI Study Assistant
               </div>
 
+              <h1 className="text-4xl font-extrabold leading-tight md:text-6xl">
+                Student Lessons
+              </h1>
+
+              <p className="mt-4 text-2xl font-semibold">
+                Class: {studentClassLabel}
+              </p>
+
+              <p className="mt-8 max-w-4xl text-lg leading-9 text-white/95 md:text-xl">
+                Browse chapter-wise lesson packs, revise key topics, and open
+                student-friendly study content prepared for exam support.
+              </p>
+            </div>
+
+            <div className="rounded-[2rem] bg-white p-8 shadow-xl">
+              <h2 className="text-3xl font-extrabold text-slate-900">
+                Lesson Overview
+              </h2>
+
+              <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-3xl bg-slate-50 p-6">
+                  <p className="text-lg text-slate-500">Total Lessons</p>
+                  <p className="mt-3 text-5xl font-extrabold text-slate-900">
+                    {totalLessons}
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-blue-50 p-6">
+                  <p className="text-lg text-slate-500">Showing</p>
+                  <p className="mt-3 text-5xl font-extrabold text-blue-600">
+                    {filteredLessons.length}
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-violet-50 p-6">
+                  <p className="text-lg text-slate-500">Subjects</p>
+                  <p className="mt-3 text-5xl font-extrabold text-violet-600">
+                    {totalSubjects}
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-amber-50 p-6">
+                  <p className="text-lg text-slate-500">Audio Ready</p>
+                  <p className="mt-3 text-5xl font-extrabold text-amber-600">
+                    {audioReadyCount}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-[2rem] bg-white p-6 shadow-xl md:p-8">
+            <div className="grid gap-6 lg:grid-cols-[1.4fr_0.7fr_0.7fr] lg:items-end">
+              <div>
+                <h2 className="text-3xl font-extrabold text-slate-900 md:text-5xl">
+                  Browse Lessons
+                </h2>
+                <p className="mt-3 text-lg text-slate-600">
+                  Filter by subject or search by title, chapter, or topic.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-3 block text-sm font-bold text-slate-800">
+                  Subject
+                </label>
+                <select
+                  value={selectedSubject}
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-lg text-slate-900 outline-none transition focus:border-blue-500"
+                >
+                  {subjects.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-3 block text-sm font-bold text-slate-800">
+                  Search
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search lessons..."
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-lg text-slate-900 outline-none transition focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-8">
               {loading ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-8 text-xl font-semibold text-slate-600">
                   Loading lessons...
                 </div>
               ) : filteredLessons.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
-                  No lesson packs found for this filter.
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+                  <h3 className="text-2xl font-bold text-slate-800">
+                    No lesson packs found
+                  </h3>
+                  <p className="mt-3 text-lg text-slate-600">
+                    Try changing the subject filter or search text.
+                  </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <div className="space-y-6">
                   {filteredLessons.map((lesson) => {
-                    const preview = getPreviewText(lesson);
-                    const chapterName = getChapterName(lesson);
-                    const lessonSubject = lesson?.subject || lesson?.subject_name || "-";
+                    const subject =
+                      lesson?.subject_name || lesson?.subject || "General";
+                    const chapter =
+                      lesson?.chapter_name || lesson?.chapter || "Not Added";
 
                     return (
                       <div
                         key={lesson.id}
-                        className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md"
+                        className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm"
                       >
-                        <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">
+                        <div className="flex flex-wrap gap-3">
+                          <span className="rounded-full bg-violet-100 px-5 py-2 text-sm font-bold text-violet-700">
                             Lesson Pack
                           </span>
 
-                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                            {lessonSubject}
+                          <span className="rounded-full bg-blue-100 px-5 py-2 text-sm font-bold text-blue-700">
+                            {subject}
                           </span>
 
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                            {formatDate(lesson.created_at)}
+                          <span className="rounded-full bg-slate-100 px-5 py-2 text-sm font-bold text-slate-700">
+                            {formatDate(lesson?.created_at)}
                           </span>
-
-                          {hasAudio(lesson) ? (
-                            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
-                              Audio Ready
-                            </span>
-                          ) : null}
                         </div>
 
-                        <h3 className="mt-4 text-2xl font-extrabold text-slate-900">
-                          {lesson.title || "Untitled Lesson"}
+                        <h3 className="mt-6 text-3xl font-extrabold text-slate-900 md:text-5xl">
+                          {lesson?.title || "Untitled Lesson"}
                         </h3>
 
-                        <p className="mt-2 text-sm text-slate-600">
-                          <span className="font-semibold text-slate-800">
+                        <p className="mt-4 text-xl text-slate-700">
+                          <span className="font-bold text-slate-900">
                             Chapter:
                           </span>{" "}
-                          {chapterName}
+                          {chapter}
                         </p>
 
-                        <p className="mt-4 line-clamp-4 text-sm leading-7 text-slate-600">
-                          {preview}
+                        <p className="mt-8 max-w-5xl text-lg leading-9 text-slate-600">
+                          {lesson?.question ||
+                            "No lesson summary available for this pack."}
                         </p>
 
-                        <div className="mt-5 flex flex-wrap gap-3">
+                        <div className="mt-8">
                           <button
-                            onClick={() => openLesson(lesson.id)}
-                            className="rounded-2xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-violet-700"
+                            onClick={() => goToLesson(lesson?.id)}
+                            className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-4 text-lg font-bold text-white shadow-lg transition hover:scale-[1.01]"
                           >
                             Open Lesson
                           </button>
@@ -381,10 +337,29 @@ export default function StudentLessonsPage() {
                   })}
                 </div>
               )}
-            </section>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
-    </>
+    </div>
   );
+}
+
+function goToLesson(id) {
+  if (!id) return;
+  window.location.href = `/lesson/${id}`;
+}
+
+function formatDate(dateValue) {
+  if (!dateValue) return "No Date";
+
+  try {
+    return new Date(dateValue).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "No Date";
+  }
 }

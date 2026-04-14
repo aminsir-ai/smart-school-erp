@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
@@ -83,16 +83,27 @@ function getChapterName(item) {
 
 export default function StudentLessonsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [user, setUser] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
 
-  const initialSubject = normalizeText(searchParams?.get("subject"), "All");
-  const [selectedSubject, setSelectedSubject] = useState(initialSubject);
+  const [selectedSubject, setSelectedSubject] = useState("All");
   const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const subjectFromUrl = normalizeText(urlParams.get("subject"), "All");
+      setSelectedSubject(subjectFromUrl || "All");
+    } catch (error) {
+      console.log("URL PARAM READ ERROR:", error);
+      setSelectedSubject("All");
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -115,6 +126,7 @@ export default function StudentLessonsPage() {
       }
 
       const role = String(parsedUser?.role || "").toLowerCase();
+
       if (role !== "student") {
         router.replace("/login");
         return;
@@ -137,7 +149,9 @@ export default function StudentLessonsPage() {
   }, [user]);
 
   useEffect(() => {
-    const params = new URLSearchParams(searchParams?.toString() || "");
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
 
     if (selectedSubject && selectedSubject !== "All") {
       params.set("subject", selectedSubject);
@@ -146,8 +160,9 @@ export default function StudentLessonsPage() {
     }
 
     const query = params.toString();
-    router.replace(query ? `/student-lessons?${query}` : "/student-lessons");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const nextUrl = query ? `/student-lessons?${query}` : "/student-lessons";
+
+    window.history.replaceState({}, "", nextUrl);
   }, [selectedSubject]);
 
   async function fetchLessons() {

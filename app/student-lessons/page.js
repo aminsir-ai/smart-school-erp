@@ -1,7 +1,6 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -33,11 +32,15 @@ function formatDate(value) {
 function parseGeneratedLessonData(rawValue) {
   if (!rawValue) return {};
 
-  if (typeof rawValue === "object") return rawValue;
+  if (typeof rawValue === "object") {
+    return rawValue;
+  }
 
   try {
     const parsed = JSON.parse(String(rawValue));
-    if (parsed && typeof parsed === "object") return parsed;
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
   } catch (error) {
     console.log("PARSE GENERATED LESSON DATA ERROR:", error);
   }
@@ -114,9 +117,15 @@ export default function StudentLessonsPage() {
       }
 
       const parsedUser = JSON.parse(rawUser);
+
+      if (!parsedUser) {
+        router.replace("/login");
+        return;
+      }
+
       const role = String(parsedUser?.role || "").toLowerCase();
 
-      if (!parsedUser || role !== "student") {
+      if (role !== "student") {
         router.replace("/login");
         return;
       }

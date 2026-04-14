@@ -64,7 +64,8 @@ export default function LessonDetailPage() {
   const params = useParams();
   const lessonId = params?.id;
 
-  const [studentName, setStudentName] = useState("Student");
+  const [userName, setUserName] = useState("User");
+  const [userRole, setUserRole] = useState("");
   const [className, setClassName] = useState("");
   const [isAllowed, setIsAllowed] = useState(false);
 
@@ -82,13 +83,15 @@ export default function LessonDetailPage() {
 
     try {
       const user = JSON.parse(storedUser);
+      const role = String(user?.role || "").toLowerCase();
 
-      if (!user || user.role !== "student") {
+      if (!["student", "admin", "management"].includes(role)) {
         window.location.href = "/login";
         return;
       }
 
-      setStudentName(user?.name || "Student");
+      setUserName(user?.name || user?.full_name || "User");
+      setUserRole(role);
       setClassName(user?.class_name || user?.class || "");
       setIsAllowed(true);
     } catch (error) {
@@ -103,7 +106,7 @@ export default function LessonDetailPage() {
     if (!lessonId) return;
 
     fetchLesson();
-  }, [isAllowed, lessonId]);
+  }, [isAllowed, lessonId, className, userRole]);
 
   async function fetchLesson() {
     setLoading(true);
@@ -120,21 +123,26 @@ export default function LessonDetailPage() {
         console.log("FETCH LESSON DETAIL ERROR:", error);
         setErrorMessage("Lesson not found.");
         setLesson(null);
-        setLoading(false);
         return;
       }
 
       if (!data || !isValidLessonPack(data)) {
         setErrorMessage("This lesson is not available.");
         setLesson(null);
-        setLoading(false);
         return;
       }
 
-      if (className && data.class_name && data.class_name !== className) {
+      const isStudentUser = userRole === "student";
+
+      if (
+        isStudentUser &&
+        className &&
+        data.class_name &&
+        String(data.class_name).trim().toLowerCase() !==
+          String(className).trim().toLowerCase()
+      ) {
         setErrorMessage("This lesson is not assigned to your class.");
         setLesson(null);
-        setLoading(false);
         return;
       }
 
@@ -163,14 +171,23 @@ export default function LessonDetailPage() {
     };
   }, [lesson]);
 
+  function goBack() {
+    if (userRole === "admin" || userRole === "management") {
+      window.location.href = "/admin-lesson-packs";
+      return;
+    }
+
+    window.location.href = "/student-lessons";
+  }
+
   if (!isAllowed) return null;
 
   return (
     <>
-      <Header name={studentName} />
+      <Header name={userName} />
 
       <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
-        <Sidebar role="student" />
+        <Sidebar />
 
         <div className="flex-1 p-4 sm:p-6">
           <div className="mx-auto max-w-7xl space-y-6">
@@ -188,10 +205,10 @@ export default function LessonDetailPage() {
 
                 <div className="mt-4">
                   <button
-                    onClick={() => (window.location.href = "/student-lessons")}
+                    onClick={goBack}
                     className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-700"
                   >
-                    Back to Lessons
+                    Back
                   </button>
                 </div>
               </div>
@@ -219,16 +236,16 @@ export default function LessonDetailPage() {
                         </p>
                         <p>
                           <span className="font-bold">Chapter:</span>{" "}
-                          {lessonData.chapterName || "-"}
+                          {lessonData.chapterName || lesson?.chapter_name || "-"}
                         </p>
                       </div>
 
                       <div className="mt-6 flex flex-wrap gap-3">
                         <button
-                          onClick={() => (window.location.href = "/student-lessons")}
+                          onClick={goBack}
                           className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-violet-700 transition hover:bg-slate-100"
                         >
-                          Back to Lessons
+                          Back
                         </button>
 
                         {lessonData.audioLink ? (
@@ -268,6 +285,13 @@ export default function LessonDetailPage() {
                           <p className="text-sm text-slate-500">Audio Support</p>
                           <h3 className="mt-2 text-xl font-extrabold text-amber-700">
                             {lessonData.audioLink ? "Available" : "Not Added"}
+                          </h3>
+                        </div>
+
+                        <div className="rounded-2xl bg-violet-50 p-4">
+                          <p className="text-sm text-slate-500">Preview Access</p>
+                          <h3 className="mt-2 text-xl font-extrabold capitalize text-violet-700">
+                            {userRole || "student"}
                           </h3>
                         </div>
                       </div>

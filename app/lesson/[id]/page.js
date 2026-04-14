@@ -8,17 +8,25 @@ import { supabase } from "@/lib/supabase";
 
 function normalizeText(value, fallback = "") {
   if (value === null || value === undefined) return fallback;
+
   const text = String(value).trim();
-  if (!text || text.toUpperCase() === "NULL" || text.toUpperCase() === "EMPTY") {
+
+  if (!text) return fallback;
+
+  if (text.toUpperCase() === "NULL" || text.toUpperCase() === "EMPTY") {
     return fallback;
   }
+
   return text;
 }
 
 function formatDate(value) {
   if (!value) return "-";
+
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) return "-";
+
   return date.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -37,10 +45,13 @@ function buildPdfUrl(lesson) {
   const directUrl = normalizeText(lesson?.lesson_pdf_url);
   if (directUrl) return directUrl;
 
-  const fileUrl = normalizeText(lesson?.lesson_file_url);
-  if (fileUrl) return fileUrl;
+  const singleFileUrl = normalizeText(lesson?.lesson_file_url);
+  if (singleFileUrl) return singleFileUrl;
 
-  const fileUrls = Array.isArray(lesson?.lesson_file_urls) ? lesson.lesson_file_urls : [];
+  const fileUrls = Array.isArray(lesson?.lesson_file_urls)
+    ? lesson.lesson_file_urls
+    : [];
+
   const firstUrl = fileUrls.find((item) => normalizeText(item));
   if (firstUrl) return firstUrl;
 
@@ -51,26 +62,46 @@ function buildPdfName(lesson) {
   const directName = normalizeText(lesson?.lesson_pdf_name);
   if (directName) return directName;
 
-  const fileName = normalizeText(lesson?.lesson_file_name);
-  if (fileName) return fileName;
+  const singleFileName = normalizeText(lesson?.lesson_file_name);
+  if (singleFileName) return singleFileName;
 
-  const fileNames = Array.isArray(lesson?.lesson_file_names) ? lesson.lesson_file_names : [];
+  const fileNames = Array.isArray(lesson?.lesson_file_names)
+    ? lesson.lesson_file_names
+    : [];
+
   const firstName = fileNames.find((item) => normalizeText(item));
   if (firstName) return firstName;
 
   return "Lesson PDF";
 }
 
+function parseGeneratedLessonData(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  if (typeof rawValue === "object") {
+    return rawValue;
+  }
+
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    console.log("GENERATED LESSON JSON PARSE ERROR:", error);
+    return {};
+  }
+}
+
 function ContentCard({ title, content, isList = false }) {
-  const listItems = useMemo(() => formatMultiline(content), [content]);
   const hasText = normalizeText(content);
+  const listItems = useMemo(() => formatMultiline(content), [content]);
 
   return (
-    <div className="bg-white rounded-[28px] shadow-lg border border-slate-200 p-6 md:p-8">
-      <h2 className="text-2xl font-extrabold text-slate-900 mb-4">{title}</h2>
+    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-lg md:p-8">
+      <h2 className="mb-4 text-2xl font-extrabold text-slate-900">{title}</h2>
 
       {!hasText ? (
-        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 text-slate-500">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-500">
           Not added yet.
         </div>
       ) : isList ? (
@@ -78,14 +109,14 @@ function ContentCard({ title, content, isList = false }) {
           {listItems.map((item, index) => (
             <div
               key={`${title}-${index}`}
-              className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 text-slate-700 leading-7"
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 leading-7 text-slate-700"
             >
               {item}
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-5 text-slate-700 leading-8 whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5 leading-8 text-slate-700">
           {hasText}
         </div>
       )}
@@ -105,17 +136,29 @@ export default function LessonDetailPage() {
   const [showPdf, setShowPdf] = useState(false);
 
   useEffect(() => {
-    const storedUser =
-      typeof window !== "undefined"
-        ? JSON.parse(localStorage.getItem("smart_school_user") || localStorage.getItem("user") || "null")
-        : null;
+    try {
+      const rawUser =
+        localStorage.getItem("erp_user") ||
+        localStorage.getItem("smart_school_user") ||
+        localStorage.getItem("user");
 
-    if (!storedUser) {
+      if (!rawUser) {
+        router.push("/login");
+        return;
+      }
+
+      const parsedUser = JSON.parse(rawUser);
+
+      if (!parsedUser) {
+        router.push("/login");
+        return;
+      }
+
+      setUser(parsedUser);
+    } catch (error) {
+      console.log("LESSON PAGE USER PARSE ERROR:", error);
       router.push("/login");
-      return;
     }
-
-    setUser(storedUser);
   }, [router]);
 
   useEffect(() => {
@@ -146,7 +189,7 @@ export default function LessonDetailPage() {
 
       setLesson(data);
     } catch (error) {
-      console.error("Failed to load lesson:", error);
+      console.error("FAILED TO LOAD LESSON:", error);
       setPageError(error?.message || "Failed to load lesson.");
       setLesson(null);
     } finally {
@@ -155,13 +198,16 @@ export default function LessonDetailPage() {
   }
 
   function handleLogout() {
+    localStorage.removeItem("erp_user");
     localStorage.removeItem("smart_school_user");
     localStorage.removeItem("user");
     router.push("/login");
   }
 
   function handleBack() {
-    if (user?.role === "admin" || user?.role === "management") {
+    const role = String(user?.role || "").toLowerCase();
+
+    if (role === "admin" || role === "management") {
       router.push("/admin-lesson-packs");
       return;
     }
@@ -169,66 +215,97 @@ export default function LessonDetailPage() {
     router.push("/student-lessons");
   }
 
+  const generatedLessonData = useMemo(() => {
+    return parseGeneratedLessonData(lesson?.generated_paper_text);
+  }, [lesson]);
+
   const title = normalizeText(lesson?.title, "Untitled Lesson");
   const className = normalizeText(lesson?.class_name, "-");
   const subjectName =
-    normalizeText(lesson?.subject_name) || normalizeText(lesson?.subject) || "-";
-  const chapterName = normalizeText(lesson?.chapter_name, "-");
-  const previewText =
-    normalizeText(lesson?.question) ||
-    normalizeText(lesson?.description) ||
-    normalizeText(lesson?.lesson_summary);
+    normalizeText(lesson?.subject_name) ||
+    normalizeText(lesson?.subject) ||
+    "-";
 
-  const simpleExplanation = normalizeText(lesson?.simple_explanation);
-  const lessonSummary = normalizeText(lesson?.lesson_summary);
-  const quickRevision = normalizeText(lesson?.quick_revision);
+  const chapterName =
+    normalizeText(lesson?.chapter_name) ||
+    normalizeText(generatedLessonData?.chapter) ||
+    "-";
+
+  const simpleExplanation =
+    normalizeText(lesson?.simple_explanation) ||
+    normalizeText(generatedLessonData?.simpleExplanation) ||
+    normalizeText(lesson?.question);
+
+  const lessonSummary =
+    normalizeText(lesson?.lesson_summary) ||
+    normalizeText(generatedLessonData?.lessonSummary) ||
+    normalizeText(lesson?.model_answer);
+
+  const quickRevision =
+    normalizeText(lesson?.quick_revision) ||
+    normalizeText(generatedLessonData?.quickRevision);
+
   const pyqInsights =
     normalizeText(lesson?.previous_year_question_insights) ||
-    normalizeText(lesson?.pyq_insights);
-  const importantQuestions = normalizeText(lesson?.important_questions);
-  const practiceQuestions = normalizeText(lesson?.practice_questions);
+    normalizeText(lesson?.pyq_insights) ||
+    normalizeText(generatedLessonData?.previousYearInsights);
+
+  const importantQuestions =
+    normalizeText(lesson?.important_questions) ||
+    normalizeText(generatedLessonData?.importantQuestions);
+
+  const practiceQuestions =
+    normalizeText(lesson?.practice_questions) ||
+    normalizeText(generatedLessonData?.practiceQuestions);
+
   const audioLink =
     normalizeText(lesson?.audio_url) ||
-    normalizeText(lesson?.audio_link);
+    normalizeText(lesson?.audio_link) ||
+    normalizeText(generatedLessonData?.audioLink);
+
+  const previewText =
+    simpleExplanation ||
+    lessonSummary ||
+    normalizeText(lesson?.description);
 
   const pdfUrl = buildPdfUrl(lesson);
   const pdfName = buildPdfName(lesson);
 
   return (
     <div className="min-h-screen bg-slate-200">
-      <Header user={user} onLogout={handleLogout} />
+      <Header name={user?.name || user?.full_name || "User"} />
 
       <div className="flex">
-        <Sidebar user={user} />
+        <Sidebar />
 
         <main className="flex-1 p-4 md:p-8">
           {loading ? (
-            <div className="bg-white rounded-[32px] shadow-lg border border-slate-200 px-8 py-12 text-xl font-semibold text-slate-600">
+            <div className="rounded-[32px] border border-slate-200 bg-white px-8 py-12 text-xl font-semibold text-slate-600 shadow-lg">
               Loading lesson...
             </div>
           ) : pageError ? (
-            <div className="bg-white rounded-[32px] shadow-lg border border-red-200 p-8">
-              <div className="rounded-2xl bg-red-50 text-red-700 px-6 py-5 text-xl font-semibold">
+            <div className="rounded-[32px] border border-red-200 bg-white p-8 shadow-lg">
+              <div className="rounded-2xl bg-red-50 px-6 py-5 text-xl font-semibold text-red-700">
                 {pageError}
               </div>
 
               <button
                 onClick={handleBack}
-                className="mt-6 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 text-white font-bold text-lg shadow-lg"
+                className="mt-6 rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 px-8 py-4 text-lg font-bold text-white shadow-lg"
               >
                 Back
               </button>
             </div>
           ) : (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-8">
-                <div className="rounded-[36px] overflow-hidden shadow-2xl border border-blue-300 bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 text-white">
+              <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1.35fr_1fr]">
+                <div className="overflow-hidden rounded-[36px] border border-blue-300 bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 text-white shadow-2xl">
                   <div className="p-8 md:p-10">
-                    <div className="inline-block rounded-full bg-white/15 px-6 py-3 text-sm md:text-base font-bold tracking-[0.2em] uppercase mb-6">
+                    <div className="mb-6 inline-block rounded-full bg-white/15 px-6 py-3 text-sm font-bold uppercase tracking-[0.2em] md:text-base">
                       AI Study Assistant
                     </div>
 
-                    <h1 className="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+                    <h1 className="mb-6 text-4xl font-extrabold leading-tight md:text-6xl">
                       {title}
                     </h1>
 
@@ -245,7 +322,7 @@ export default function LessonDetailPage() {
                     </div>
 
                     {previewText ? (
-                      <p className="mt-8 text-lg md:text-2xl leading-9 text-white/95">
+                      <p className="mt-8 text-lg leading-9 text-white/95 md:text-2xl">
                         {previewText}
                       </p>
                     ) : null}
@@ -253,7 +330,7 @@ export default function LessonDetailPage() {
                     <div className="mt-8 flex flex-wrap gap-4">
                       <button
                         onClick={handleBack}
-                        className="px-8 py-4 rounded-2xl bg-white text-fuchsia-700 font-bold text-lg shadow-lg"
+                        className="rounded-2xl bg-white px-8 py-4 text-lg font-bold text-fuchsia-700 shadow-lg"
                       >
                         Back
                       </button>
@@ -261,7 +338,7 @@ export default function LessonDetailPage() {
                       {pdfUrl ? (
                         <button
                           onClick={() => setShowPdf((prev) => !prev)}
-                          className="px-8 py-4 rounded-2xl border border-white/30 bg-white/10 text-white font-bold text-lg shadow-lg"
+                          className="rounded-2xl border border-white/30 bg-white/10 px-8 py-4 text-lg font-bold text-white shadow-lg"
                         >
                           {showPdf ? "Hide PDF" : "View PDF"}
                         </button>
@@ -272,57 +349,67 @@ export default function LessonDetailPage() {
                           href={audioLink}
                           target="_blank"
                           rel="noreferrer"
-                          className="px-8 py-4 rounded-2xl border border-white/30 bg-white/10 text-white font-bold text-lg shadow-lg"
+                          className="rounded-2xl border border-white/30 bg-white/10 px-8 py-4 text-lg font-bold text-white shadow-lg"
                         >
                           Open Audio
                         </a>
                       ) : null}
+
+                      <button
+                        onClick={handleLogout}
+                        className="rounded-2xl border border-white/30 bg-white/10 px-8 py-4 text-lg font-bold text-white shadow-lg"
+                      >
+                        Logout
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[36px] shadow-2xl border border-slate-200 p-6 md:p-8">
-                  <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 mb-8">
+                <div className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-2xl md:p-8">
+                  <h2 className="mb-8 text-3xl font-extrabold text-slate-900 md:text-5xl">
                     Lesson Info
                   </h2>
 
                   <div className="space-y-6">
-                    <div className="rounded-[28px] bg-slate-50 border border-slate-200 px-6 py-6">
-                      <div className="text-slate-500 text-lg mb-3">Created On</div>
+                    <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-6 py-6">
+                      <div className="mb-3 text-lg text-slate-500">Created On</div>
                       <div className="text-3xl font-extrabold text-slate-900">
                         {formatDate(lesson?.created_at)}
                       </div>
                     </div>
 
-                    <div className="rounded-[28px] bg-blue-50 border border-blue-100 px-6 py-6">
-                      <div className="text-slate-500 text-lg mb-3">Lesson Type</div>
+                    <div className="rounded-[28px] border border-blue-100 bg-blue-50 px-6 py-6">
+                      <div className="mb-3 text-lg text-slate-500">Lesson Type</div>
                       <div className="text-3xl font-extrabold text-blue-700">
                         {normalizeText(lesson?.type, "-")}
                       </div>
                     </div>
 
-                    <div className="rounded-[28px] bg-amber-50 border border-amber-100 px-6 py-6">
-                      <div className="text-slate-500 text-lg mb-3">Audio Support</div>
+                    <div className="rounded-[28px] border border-amber-100 bg-amber-50 px-6 py-6">
+                      <div className="mb-3 text-lg text-slate-500">Audio Support</div>
                       <div className="text-3xl font-extrabold text-amber-700">
                         {audioLink ? "Added" : "Not Added"}
                       </div>
                     </div>
 
-                    <div className="rounded-[28px] bg-violet-50 border border-violet-100 px-6 py-6">
-                      <div className="text-slate-500 text-lg mb-3">Preview Access</div>
+                    <div className="rounded-[28px] border border-violet-100 bg-violet-50 px-6 py-6">
+                      <div className="mb-3 text-lg text-slate-500">Preview Access</div>
                       <div className="text-3xl font-extrabold text-violet-700">
-                        {user?.role === "admin" || user?.role === "management" ? "Admin" : "Student"}
+                        {String(user?.role || "").toLowerCase() === "admin" ||
+                        String(user?.role || "").toLowerCase() === "management"
+                          ? "Admin"
+                          : "Student"}
                       </div>
                     </div>
 
                     {pdfUrl ? (
-                      <div className="rounded-[28px] bg-emerald-50 border border-emerald-100 px-6 py-6">
-                        <div className="text-slate-500 text-lg mb-3">Lesson PDF</div>
+                      <div className="rounded-[28px] border border-emerald-100 bg-emerald-50 px-6 py-6">
+                        <div className="mb-3 text-lg text-slate-500">Lesson PDF</div>
                         <a
                           href={pdfUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xl font-bold text-emerald-700 break-all"
+                          className="break-all text-xl font-bold text-emerald-700"
                         >
                           {pdfName}
                         </a>
@@ -333,26 +420,27 @@ export default function LessonDetailPage() {
               </div>
 
               {pdfUrl && showPdf ? (
-                <div className="bg-white rounded-[32px] shadow-lg border border-slate-200 p-6 md:p-8">
-                  <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
-                    <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900">
+                <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-lg md:p-8">
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                    <h2 className="text-2xl font-extrabold text-slate-900 md:text-3xl">
                       Original Lesson PDF
                     </h2>
+
                     <a
                       href={pdfUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 text-white font-bold"
+                      className="rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 px-6 py-3 font-bold text-white"
                     >
                       Open in New Tab
                     </a>
                   </div>
 
-                  <div className="rounded-[24px] overflow-hidden border border-slate-200 bg-slate-100">
+                  <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-slate-100">
                     <iframe
                       src={pdfUrl}
                       title="Lesson PDF"
-                      className="w-full h-[700px]"
+                      className="h-[700px] w-full"
                     />
                   </div>
                 </div>
@@ -362,9 +450,20 @@ export default function LessonDetailPage() {
                 <ContentCard title="Simple Explanation" content={simpleExplanation} />
                 <ContentCard title="Lesson Summary" content={lessonSummary} />
                 <ContentCard title="Quick Revision" content={quickRevision} />
-                <ContentCard title="Previous Year Question Insights" content={pyqInsights} />
-                <ContentCard title="Important Questions" content={importantQuestions} isList />
-                <ContentCard title="Practice Questions" content={practiceQuestions} isList />
+                <ContentCard
+                  title="Previous Year Question Insights"
+                  content={pyqInsights}
+                />
+                <ContentCard
+                  title="Important Questions"
+                  content={importantQuestions}
+                  isList
+                />
+                <ContentCard
+                  title="Practice Questions"
+                  content={practiceQuestions}
+                  isList
+                />
               </div>
             </div>
           )}

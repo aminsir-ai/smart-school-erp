@@ -1,12 +1,103 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
 const STORAGE_BUCKET = "lesson-files";
+
+const TITLE_PLACEHOLDER = "Example: Geography - Location and Extent";
+const CHAPTER_PLACEHOLDER = "Example: Location and Extent";
+const SIMPLE_EXPLANATION_PLACEHOLDER =
+  "Explain the chapter in simple student-friendly language in 4 to 6 lines.\n\nExample:\nThis lesson explains the location and extent of India and Brazil. India lies mainly in the Northern and Eastern Hemispheres. Brazil lies mainly in the Western Hemisphere and spreads across the Equator. The chapter compares latitude, longitude, boundaries, and geographical importance.";
+const LESSON_SUMMARY_PLACEHOLDER =
+  "Write a short exam-focused summary in 2 to 4 lines.\n\nExample:\nThis chapter compares India and Brazil using location, extent, hemispheres, boundaries, and historical background. It helps students understand how geographical location affects climate, trade, and regional importance.";
+const QUICK_REVISION_PLACEHOLDER =
+  "Add 5 to 8 short revision points.\n\nExample:\n- India lies in Asia\n- Brazil lies in South America\n- Tropic of Cancer passes through India\n- Equator passes through Brazil\n- Location affects climate and trade";
+const PYQ_PLACEHOLDER =
+  "Mention repeated or likely question patterns from previous papers.\n\nExample:\n- Compare India and Brazil by location\n- Write latitudinal and longitudinal extent\n- Map-based question may be asked\n- Short note on hemispheres is important";
+const IMPORTANT_QUESTIONS_PLACEHOLDER =
+  "Write one important exam question per line.\n\nExample:\nWhat is the latitudinal extent of India?\nCompare the location of India and Brazil.\nWhich important latitudes pass through India and Brazil?";
+const PRACTICE_QUESTIONS_PLACEHOLDER =
+  "Write one practice question per line.\n\nExample:\nIn which continent is India located?\nIn which hemisphere is Brazil located?\nState one similarity between India and Brazil.";
+const AUDIO_LINK_PLACEHOLDER = "Optional audio URL if available";
+
+function cleanText(value) {
+  return String(value || "").trim();
+}
+
+function hasMeaningfulText(value) {
+  const text = cleanText(value);
+
+  if (!text) return false;
+
+  const blockedValues = [
+    "na",
+    "n/a",
+    "none",
+    "null",
+    "-",
+    "simple explanation",
+    "lesson summary",
+    "quick revision",
+    "previous year question insights",
+    "important questions",
+    "practice questions",
+    "write short summary",
+    "write quick revision points",
+    "write pyq insights if available",
+    "write important questions",
+    "write practice questions",
+  ];
+
+  return !blockedValues.includes(text.toLowerCase());
+}
+
+function countMeaningfulLines(value) {
+  return cleanText(value)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && hasMeaningfulText(line)).length;
+}
+
+function buildQualityWarnings({
+  simpleExplanation,
+  lessonSummary,
+  quickRevision,
+  previousYearInsights,
+  importantQuestions,
+  practiceQuestions,
+}) {
+  const warnings = [];
+
+  if (cleanText(simpleExplanation).length < 80) {
+    warnings.push("Simple Explanation should be a proper easy explanation, not just one short line.");
+  }
+
+  if (cleanText(lessonSummary).length < 40) {
+    warnings.push("Lesson Summary is too short.");
+  }
+
+  if (countMeaningfulLines(quickRevision) < 3) {
+    warnings.push("Quick Revision should have at least 3 useful revision points.");
+  }
+
+  if (cleanText(previousYearInsights) && cleanText(previousYearInsights).length < 20) {
+    warnings.push("Previous Year Question Insights looks too weak.");
+  }
+
+  if (cleanText(importantQuestions) && countMeaningfulLines(importantQuestions) < 2) {
+    warnings.push("Important Questions should have at least 2 meaningful questions.");
+  }
+
+  if (cleanText(practiceQuestions) && countMeaningfulLines(practiceQuestions) < 2) {
+    warnings.push("Practice Questions should have at least 2 meaningful questions.");
+  }
+
+  return warnings;
+}
 
 export default function AdminCreateLessonPackPage() {
   const router = useRouter();
@@ -15,6 +106,7 @@ export default function AdminCreateLessonPackPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -65,6 +157,30 @@ export default function AdminCreateLessonPackPage() {
     }
   }, [router]);
 
+  const formScore = useMemo(() => {
+    let score = 0;
+
+    if (hasMeaningfulText(title)) score += 10;
+    if (hasMeaningfulText(chapterName)) score += 10;
+    if (hasMeaningfulText(simpleExplanation)) score += 25;
+    if (hasMeaningfulText(lessonSummary)) score += 15;
+    if (hasMeaningfulText(quickRevision)) score += 15;
+    if (hasMeaningfulText(previousYearInsights)) score += 10;
+    if (countMeaningfulLines(importantQuestions) >= 2) score += 10;
+    if (countMeaningfulLines(practiceQuestions) >= 2) score += 5;
+
+    return Math.min(score, 100);
+  }, [
+    title,
+    chapterName,
+    simpleExplanation,
+    lessonSummary,
+    quickRevision,
+    previousYearInsights,
+    importantQuestions,
+    practiceQuestions,
+  ]);
+
   const resetForm = () => {
     setTitle("");
     setClassName("10th");
@@ -80,6 +196,7 @@ export default function AdminCreateLessonPackPage() {
     setLessonPdfFile(null);
     setError("");
     setMessage("");
+    setWarnings([]);
   };
 
   const handlePdfChange = (event) => {
@@ -140,47 +257,69 @@ export default function AdminCreateLessonPackPage() {
     setSaving(true);
     setMessage("");
     setError("");
+    setWarnings([]);
 
     try {
-      if (!title.trim()) {
-        throw new Error("Title is required.");
+      if (!hasMeaningfulText(title)) {
+        throw new Error("Lesson Title is required.");
       }
 
-      if (!className.trim()) {
+      if (!hasMeaningfulText(className)) {
         throw new Error("Class is required.");
       }
 
-      if (!subjectName.trim()) {
+      if (!hasMeaningfulText(subjectName)) {
         throw new Error("Subject is required.");
       }
 
-      if (!chapterName.trim()) {
-        throw new Error("Chapter name is required.");
+      if (!hasMeaningfulText(chapterName)) {
+        throw new Error("Chapter Name is required.");
       }
+
+      if (!hasMeaningfulText(simpleExplanation)) {
+        throw new Error("Simple Explanation is required.");
+      }
+
+      if (!hasMeaningfulText(lessonSummary)) {
+        throw new Error("Lesson Summary is required.");
+      }
+
+      if (!hasMeaningfulText(quickRevision)) {
+        throw new Error("Quick Revision is required.");
+      }
+
+      const qualityWarnings = buildQualityWarnings({
+        simpleExplanation,
+        lessonSummary,
+        quickRevision,
+        previousYearInsights,
+        importantQuestions,
+        practiceQuestions,
+      });
+
+      setWarnings(qualityWarnings);
 
       const uploadedPdf = await uploadLessonPdf(lessonPdfFile);
 
-      // Keep all extra lesson sections safely inside generated_paper_text JSON.
-      // This avoids schema mismatch and works with your current works table.
       const structuredLessonData = {
-        chapter: chapterName.trim(),
-        simpleExplanation: simpleExplanation.trim(),
-        lessonSummary: lessonSummary.trim(),
-        quickRevision: quickRevision.trim(),
-        previousYearInsights: previousYearInsights.trim(),
-        importantQuestions: importantQuestions.trim(),
-        practiceQuestions: practiceQuestions.trim(),
-        audioLink: audioLink.trim(),
+        chapter: cleanText(chapterName),
+        simpleExplanation: cleanText(simpleExplanation),
+        lessonSummary: cleanText(lessonSummary),
+        quickRevision: cleanText(quickRevision),
+        previousYearInsights: cleanText(previousYearInsights),
+        importantQuestions: cleanText(importantQuestions),
+        practiceQuestions: cleanText(practiceQuestions),
+        audioLink: cleanText(audioLink),
       };
 
       const rowToInsert = {
-        title: title.trim(),
-        question: simpleExplanation.trim() || "",
-        model_answer: lessonSummary.trim() || "",
+        title: cleanText(title),
+        question: cleanText(simpleExplanation),
+        model_answer: cleanText(lessonSummary),
         type: "lesson_pack",
-        class_name: className.trim(),
-        subject_name: subjectName.trim(),
-        subject: subjectName.trim(),
+        class_name: cleanText(className),
+        subject_name: cleanText(subjectName),
+        subject: cleanText(subjectName),
         teacher_name:
           currentUser?.name || currentUser?.full_name || currentUser?.username || "Admin",
         teacher_id: currentUser?.id || null,
@@ -228,7 +367,7 @@ export default function AdminCreateLessonPackPage() {
 
         <main className="w-full p-4 md:p-8">
           <div className="mx-auto max-w-7xl space-y-6">
-            <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+            <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
               <div className="rounded-[32px] bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8 text-white shadow-xl">
                 <div className="mb-4 inline-flex rounded-full bg-white/15 px-5 py-2 text-sm font-bold uppercase tracking-[0.2em]">
                   AI Study Assistant
@@ -239,52 +378,54 @@ export default function AdminCreateLessonPackPage() {
                 </h1>
 
                 <p className="mt-5 max-w-3xl text-lg leading-8 text-white/90">
-                  Upload lesson PDF and create a structured chapter pack for students.
-                  This keeps the process practical now, and later we can add AI draft generation.
+                  Fill this lesson pack as if a student will study directly from it.
+                  Keep language simple, exam-focused, and useful.
                 </p>
 
                 <div className="mt-8 grid gap-4 md:grid-cols-2">
                   <div className="rounded-3xl border border-white/15 bg-white/10 p-5">
-                    <h3 className="text-2xl font-bold">Manual + Safe</h3>
+                    <h3 className="text-2xl font-bold">Better Learning Content</h3>
                     <p className="mt-2 text-white/85">
-                      Add chapter content carefully without risky automation.
+                      Add meaningful explanations, revision points, and important questions.
                     </p>
                   </div>
 
                   <div className="rounded-3xl border border-white/15 bg-white/10 p-5">
-                    <h3 className="text-2xl font-bold">PDF Ready</h3>
+                    <h3 className="text-2xl font-bold">Strong Student View</h3>
                     <p className="mt-2 text-white/85">
-                      Store lesson PDF now so students can view original material later.
+                      Whatever you write here becomes the student learning experience.
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[32px] bg-white p-8 shadow-xl">
-                <h2 className="text-3xl font-black text-slate-900">Save Structure</h2>
+                <h2 className="text-3xl font-black text-slate-900">Content Quality</h2>
 
                 <div className="mt-6 space-y-4">
                   <div className="rounded-3xl bg-slate-100 p-5">
-                    <p className="text-slate-500">Saved into</p>
-                    <p className="text-2xl font-bold text-slate-900">works table</p>
+                    <p className="text-slate-500">Lesson readiness score</p>
+                    <p className="text-4xl font-black text-slate-900">{formScore}/100</p>
                   </div>
 
                   <div className="rounded-3xl bg-blue-50 p-5">
-                    <p className="text-slate-500">Record type</p>
-                    <p className="text-2xl font-bold text-blue-700">lesson_pack</p>
+                    <p className="text-slate-500">Required before save</p>
+                    <p className="text-lg font-bold text-blue-700">
+                      Title, Chapter, Simple Explanation, Lesson Summary, Quick Revision
+                    </p>
                   </div>
 
                   <div className="rounded-3xl bg-emerald-50 p-5">
-                    <p className="text-slate-500">Lesson PDF columns</p>
+                    <p className="text-slate-500">Strongly recommended</p>
                     <p className="text-lg font-bold text-emerald-700">
-                      lesson_file_urls / lesson_file_names
+                      PYQ Insights, Important Questions, Practice Questions
                     </p>
                   </div>
 
                   <div className="rounded-3xl bg-amber-50 p-5">
-                    <p className="text-slate-500">Audio Link</p>
+                    <p className="text-slate-500">PDF support</p>
                     <p className="text-lg font-bold text-amber-700">
-                      optional for now
+                      Upload original lesson PDF for student reference
                     </p>
                   </div>
                 </div>
@@ -296,7 +437,7 @@ export default function AdminCreateLessonPackPage() {
                 Lesson Pack Details
               </h2>
               <p className="mt-2 text-lg text-slate-600">
-                Fill the chapter content manually for now and upload the lesson PDF.
+                Build the chapter properly now. AI draft generation can be added later.
               </p>
 
               {message ? (
@@ -311,36 +452,47 @@ export default function AdminCreateLessonPackPage() {
                 </div>
               ) : null}
 
+              {warnings.length > 0 ? (
+                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                  <p className="mb-2 text-sm font-bold text-amber-800">Content quality warnings:</p>
+                  <div className="space-y-2 text-sm text-amber-700">
+                    {warnings.map((warning, index) => (
+                      <div key={index}>• {warning}</div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-8 grid gap-6 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Lesson Title
+                    Lesson Title *
                   </label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Example: Light Reflection and Refraction"
+                    placeholder={TITLE_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Chapter Name
+                    Chapter Name *
                   </label>
                   <input
                     type="text"
                     value={chapterName}
                     onChange={(e) => setChapterName(e.target.value)}
-                    placeholder="Example: Light Reflection"
+                    placeholder={CHAPTER_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Class
+                    Class *
                   </label>
                   <select
                     value={className}
@@ -354,7 +506,7 @@ export default function AdminCreateLessonPackPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Subject
+                    Subject *
                   </label>
                   <select
                     value={subjectName}
@@ -385,46 +537,55 @@ export default function AdminCreateLessonPackPage() {
                     </p>
                   ) : (
                     <p className="mt-2 text-sm text-slate-500">
-                      Upload the original lesson PDF here.
+                      Upload the original lesson PDF for student reference.
                     </p>
                   )}
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Simple Explanation
+                    Simple Explanation *
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Explain the chapter in easy student language. Avoid one-line placeholders.
+                  </p>
                   <textarea
-                    rows={5}
+                    rows={7}
                     value={simpleExplanation}
                     onChange={(e) => setSimpleExplanation(e.target.value)}
-                    placeholder="Write easy student-friendly explanation..."
+                    placeholder={SIMPLE_EXPLANATION_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Lesson Summary
+                    Lesson Summary *
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Write a short summary that helps quick exam understanding.
+                  </p>
                   <textarea
-                    rows={4}
+                    rows={5}
                     value={lessonSummary}
                     onChange={(e) => setLessonSummary(e.target.value)}
-                    placeholder="Write short summary..."
+                    placeholder={LESSON_SUMMARY_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Quick Revision
+                    Quick Revision *
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Add short points students can revise before exam.
+                  </p>
                   <textarea
-                    rows={4}
+                    rows={6}
                     value={quickRevision}
                     onChange={(e) => setQuickRevision(e.target.value)}
-                    placeholder="Write quick revision points..."
+                    placeholder={QUICK_REVISION_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -433,11 +594,14 @@ export default function AdminCreateLessonPackPage() {
                   <label className="mb-2 block text-sm font-bold text-slate-700">
                     Previous Year Question Insights
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Mention repeated patterns or likely exam questions if available.
+                  </p>
                   <textarea
-                    rows={4}
+                    rows={5}
                     value={previousYearInsights}
                     onChange={(e) => setPreviousYearInsights(e.target.value)}
-                    placeholder="Write PYQ insights if available..."
+                    placeholder={PYQ_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -446,11 +610,14 @@ export default function AdminCreateLessonPackPage() {
                   <label className="mb-2 block text-sm font-bold text-slate-700">
                     Important Questions
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    One meaningful question per line.
+                  </p>
                   <textarea
-                    rows={6}
+                    rows={8}
                     value={importantQuestions}
                     onChange={(e) => setImportantQuestions(e.target.value)}
-                    placeholder="Write important questions..."
+                    placeholder={IMPORTANT_QUESTIONS_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -459,11 +626,14 @@ export default function AdminCreateLessonPackPage() {
                   <label className="mb-2 block text-sm font-bold text-slate-700">
                     Practice Questions
                   </label>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Add student practice questions, one per line.
+                  </p>
                   <textarea
-                    rows={6}
+                    rows={8}
                     value={practiceQuestions}
                     onChange={(e) => setPracticeQuestions(e.target.value)}
-                    placeholder="Write practice questions..."
+                    placeholder={PRACTICE_QUESTIONS_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>
@@ -476,7 +646,7 @@ export default function AdminCreateLessonPackPage() {
                     type="text"
                     value={audioLink}
                     onChange={(e) => setAudioLink(e.target.value)}
-                    placeholder="Optional audio URL"
+                    placeholder={AUDIO_LINK_PLACEHOLDER}
                     className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
                   />
                 </div>

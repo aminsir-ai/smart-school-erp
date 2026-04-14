@@ -1,21 +1,17 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
-const SUBJECT_OPTIONS = ["All", "Science", "Maths", "History", "Geography", "English"];
-const CLASS_OPTIONS = ["All", "9th", "10th"];
-
-function isLessonPack(item) {
-  const typeText = String(item?.type || "").trim().toLowerCase();
-
-  return (
-    typeText === "lesson_pack" ||
-    typeText === "lesson pack" ||
-    typeText === "lessonpack"
-  );
+function normalizeText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
 }
 
 function formatDate(value) {
@@ -32,268 +28,320 @@ function formatDate(value) {
   }
 }
 
-function getLessonText(item) {
-  return item?.question || item?.generated_paper_text || "";
-}
+function parseGeneratedLessonData(rawValue) {
+  if (!rawValue) return {};
 
-function extractSection(fullText, label) {
-  const text = String(fullText || "");
-  const safeLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (typeof rawValue === "object") {
+    return rawValue;
+  }
 
-  const regex = new RegExp(
-    `${safeLabel}:\\n([\\s\\S]*?)(?=\\n\\n(?:Chapter Name|Simple Explanation|Lesson Summary|Quick Revision|Previous Year Question Insights|Important Questions|Practice Questions|Audio Link):|$)`,
-    "i"
-  );
+  try {
+    const parsed = JSON.parse(String(rawValue));
+    if (parsed && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch (error) {
+    console.log("PARSE GENERATED LESSON DATA ERROR:", error);
+  }
 
-  const match = text.match(regex);
-  return match?.[1]?.trim() || "";
-}
-
-function getChapterName(item) {
-  const fullText = getLessonText(item);
-  return extractSection(fullText, "Chapter Name") || "-";
+  return {};
 }
 
 function getPreviewText(item) {
-  const fullText = getLessonText(item);
+  const parsed = parseGeneratedLessonData(item?.generated_paper_text);
 
   return (
-    extractSection(fullText, "Lesson Summary") ||
-    extractSection(fullText, "Simple Explanation") ||
+    normalizeText(parsed?.simpleExplanation) ||
+    normalizeText(parsed?.lessonSummary) ||
+    normalizeText(item?.question) ||
+    normalizeText(item?.model_answer) ||
     "No preview available."
   );
 }
 
+function getChapterName(item) {
+  const parsed = parseGeneratedLessonData(item?.generated_paper_text);
+
+  return (
+    normalizeText(parsed?.chapter) ||
+    normalizeText(item?.chapter_name) ||
+    normalizeText(item?.keyword) ||
+    "-"
+  );
+}
+
 function hasAudio(item) {
-  const fullText = getLessonText(item);
-  return !!extractSection(fullText, "Audio Link");
+  const parsed = parseGeneratedLessonData(item?.generated_paper_text);
+
+  return Boolean(
+    normalizeText(parsed?.audioLink) ||
+      normalizeText(item?.audio_link) ||
+      normalizeText(item?.audio_url)
+  );
 }
 
 export default function AdminLessonPacksPage() {
-  const [adminName, setAdminName] = useState("Admin");
-  const [isAllowed, setIsAllowed] = useState(false);
+  const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
-  const [message, setMessage] = useState("");
-
+  const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState(null);
   const [lessonPacks, setLessonPacks] = useState([]);
-
-  const [classFilter, setClassFilter] = useState("All");
-  const [subjectFilter, setSubjectFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [selectedClass, setSelectedClass] = useState("All");
+  const [selectedSubject, setSelectedSubject] = useState("All");
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("erp_user");
-
-    if (!storedUser) {
-      window.location.href = "/login";
-      return;
-    }
-
-    try {
-      const user = JSON.parse(storedUser);
-
-      if (!user || (user.role !== "admin" && user.role !== "management")) {
-        window.location.href = "/login";
-        return;
-      }
-
-      setAdminName(user?.name || user?.full_name || "Admin");
-      setIsAllowed(true);
-    } catch (error) {
-      console.log("ADMIN LESSON PACK AUTH ERROR:", error);
-      localStorage.removeItem("erp_user");
-      window.location.href = "/login";
-    }
+    setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!isAllowed) return;
-    fetchLessonPacks();
-  }, [isAllowed]);
-
-  async function fetchLessonPacks() {
-    setLoading(true);
-    setMessage("");
+    if (!mounted) return;
 
     try {
-      const { data, error } = await supabase
-        .from("works")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const rawUser =
+        localStorage.getItem("erp_user") ||
+        localStorage.getItem("smart_school_user") ||
+        localStorage.getItem("user");
 
-      if (error) {
-        console.log("FETCH ADMIN LESSON PACKS ERROR:", error);
-        setLessonPacks([]);
-        setMessage("Failed to load lesson packs.");
+      if (!rawUser) {
+        router.replace("/login");
         return;
       }
 
-      const rows = (data || []).filter((item) => isLessonPack(item));
-      setLessonPacks(rows);
+      const parsedUser = JSON.parse(rawUser);
+      const role = String(parsedUser?.role || "").toLowerCase();
+
+      if (
+        !parsedUser ||
+        !["admin", "management", "manager", "super_admin", "teacher"].includes(role)
+      ) {
+        router.replace("/login");
+        return;
+      }
+
+      setUser(parsedUser);
     } catch (error) {
-      console.log("UNEXPECTED ADMIN LESSON PACKS ERROR:", error);
+      console.log("ADMIN LESSON PACK AUTH ERROR:", error);
+      localStorage.removeItem("erp_user");
+      localStorage.removeItem("smart_school_user");
+      localStorage.removeItem("user");
+      router.replace("/login");
+    }
+  }, [mounted, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchLessonPacks();
+  }, [user]);
+
+  async function fetchLessonPacks() {
+    try {
+      setLoading(true);
+      setPageError("");
+
+      const { data, error } = await supabase
+        .from("works")
+        .select("*")
+        .eq("type", "lesson_pack")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setLessonPacks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("FAILED TO LOAD LESSON PACKS:", error);
+      setPageError(error?.message || "Failed to load lesson packs.");
       setLessonPacks([]);
-      setMessage("Something went wrong while loading lesson packs.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDeleteLesson(id) {
-    const confirmDelete = window.confirm(
+  async function handleDelete(id) {
+    const confirmed = window.confirm(
       "Are you sure you want to delete this lesson pack?"
     );
 
-    if (!confirmDelete) return;
-
-    setDeletingId(id);
-    setMessage("");
+    if (!confirmed) return;
 
     try {
-      const { error } = await supabase.from("works").delete().eq("id", id);
+      setDeletingId(id);
+      setPageError("");
+
+      const { error } = await supabase
+        .from("works")
+        .delete()
+        .eq("id", id)
+        .eq("type", "lesson_pack");
 
       if (error) {
-        console.log("DELETE LESSON PACK ERROR:", error);
-        setMessage(`Failed to delete lesson pack: ${error.message}`);
-        return;
+        throw error;
       }
 
       setLessonPacks((prev) => prev.filter((item) => item.id !== id));
-      setMessage("Lesson pack deleted successfully.");
     } catch (error) {
-      console.log("UNEXPECTED DELETE LESSON PACK ERROR:", error);
-      setMessage("Something went wrong while deleting lesson pack.");
+      console.error("FAILED TO DELETE LESSON PACK:", error);
+      setPageError(error?.message || "Failed to delete lesson pack.");
     } finally {
-      setDeletingId(null);
+      setDeletingId("");
     }
   }
 
-  function openLesson(id) {
-    if (!id) return;
-    window.location.href = `/lesson/${id}`;
+  function handleLogout() {
+    localStorage.removeItem("erp_user");
+    localStorage.removeItem("smart_school_user");
+    localStorage.removeItem("user");
+    router.push("/login");
   }
 
+  const classOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(lessonPacks.map((item) => normalizeText(item?.class_name)).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+
+    return ["All", ...values];
+  }, [lessonPacks]);
+
+  const subjectOptions = useMemo(() => {
+    const values = Array.from(
+      new Set(
+        lessonPacks
+          .map((item) => normalizeText(item?.subject_name || item?.subject))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    return ["All", ...values];
+  }, [lessonPacks]);
+
   const filteredLessonPacks = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+
     return lessonPacks.filter((item) => {
-      const className = String(item?.class_name || "").trim();
-      const subject = String(item?.subject || item?.subject_name || "").trim();
-      const title = String(item?.title || "").toLowerCase();
-      const chapterName = getChapterName(item).toLowerCase();
-      const preview = getPreviewText(item).toLowerCase();
-      const search = searchText.trim().toLowerCase();
+      const title = normalizeText(item?.title);
+      const className = normalizeText(item?.class_name);
+      const subjectName = normalizeText(item?.subject_name || item?.subject);
+      const chapterName = getChapterName(item);
+      const preview = getPreviewText(item);
 
       const classMatch =
-        classFilter === "All" ||
-        className.toLowerCase() === classFilter.toLowerCase();
+        selectedClass === "All" || className === selectedClass;
 
       const subjectMatch =
-        subjectFilter === "All" ||
-        subject.toLowerCase() === subjectFilter.toLowerCase();
+        selectedSubject === "All" || subjectName === selectedSubject;
 
       const searchMatch =
-        !search ||
-        title.includes(search) ||
-        chapterName.includes(search) ||
-        preview.includes(search) ||
-        subject.toLowerCase().includes(search) ||
-        className.toLowerCase().includes(search);
+        !query ||
+        title.toLowerCase().includes(query) ||
+        className.toLowerCase().includes(query) ||
+        subjectName.toLowerCase().includes(query) ||
+        chapterName.toLowerCase().includes(query) ||
+        preview.toLowerCase().includes(query);
 
       return classMatch && subjectMatch && searchMatch;
     });
-  }, [lessonPacks, classFilter, subjectFilter, searchText]);
+  }, [lessonPacks, searchText, selectedClass, selectedSubject]);
 
-  const stats = useMemo(() => {
-    const subjectSet = new Set(
+  const totalSubjects = useMemo(() => {
+    return new Set(
       lessonPacks
-        .map((item) => item?.subject || item?.subject_name || "")
+        .map((item) => normalizeText(item?.subject_name || item?.subject))
         .filter(Boolean)
-    );
+    ).size;
+  }, [lessonPacks]);
 
-    return {
-      total: lessonPacks.length,
-      filtered: filteredLessonPacks.length,
-      subjects: subjectSet.size,
-      audioReady: lessonPacks.filter((item) => hasAudio(item)).length,
-    };
-  }, [lessonPacks, filteredLessonPacks]);
+  const audioReadyCount = useMemo(() => {
+    return lessonPacks.filter((item) => hasAudio(item)).length;
+  }, [lessonPacks]);
 
-  if (!isAllowed) return null;
+  if (!mounted) return null;
+  if (!user) return null;
 
   return (
     <>
-      <Header name={adminName} />
+      <Header name={user?.name || user?.full_name || user?.username || "Admin"} />
 
       <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
-        <Sidebar role="admin" />
+        <Sidebar role={user?.role} />
 
-        <div className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 p-4 md:p-6">
           <div className="mx-auto max-w-7xl space-y-6">
-            <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
-              <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 text-white sm:p-8">
-                  <div className="mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white/95">
+            <section className="overflow-hidden rounded-[32px] border border-white/70 bg-white/90 shadow-xl">
+              <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8 text-white md:p-10">
+                  <div className="inline-flex rounded-full bg-white/15 px-5 py-2 text-xs font-bold uppercase tracking-[0.22em] text-white/95">
                     AI Study Assistant
                   </div>
 
-                  <h1 className="text-3xl font-extrabold sm:text-4xl">
+                  <h1 className="mt-5 text-4xl font-black md:text-6xl">
                     Admin Lesson Pack List
                   </h1>
 
-                  <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
-                    View, search, verify, and manage all created lesson packs for
-                    Class 9th and 10th students.
+                  <p className="mt-6 max-w-3xl text-lg leading-9 text-white/95">
+                    View, search, verify, edit, and manage all created lesson packs
+                    for Class 9th and 10th students.
                   </p>
 
-                  <div className="mt-6 flex flex-wrap gap-3">
+                  <div className="mt-8 flex flex-wrap gap-3">
                     <button
-                      onClick={() => (window.location.href = "/admin-create-lesson-pack")}
-                      className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-violet-700 transition hover:bg-slate-100"
+                      onClick={() => router.push("/admin-create-lesson-pack")}
+                      className="rounded-2xl bg-white px-6 py-3 font-bold text-slate-900 shadow-lg"
                     >
                       Create New Lesson Pack
                     </button>
 
                     <button
                       onClick={fetchLessonPacks}
-                      className="rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/20"
+                      className="rounded-2xl border border-white/30 bg-white/10 px-6 py-3 font-bold text-white"
                     >
                       Refresh List
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="rounded-2xl bg-red-500 px-6 py-3 font-bold text-white shadow-lg"
+                    >
+                      Logout
                     </button>
                   </div>
                 </div>
 
-                <div className="p-6 sm:p-8">
-                  <h2 className="text-2xl font-extrabold text-slate-900">
+                <div className="p-6 md:p-8">
+                  <h2 className="text-3xl font-black text-slate-900">
                     Overview
                   </h2>
 
-                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-3xl bg-slate-50 p-5">
                       <p className="text-sm text-slate-500">Total Packs</p>
                       <h3 className="mt-2 text-3xl font-extrabold text-slate-900">
-                        {stats.total}
+                        {lessonPacks.length}
                       </h3>
                     </div>
 
-                    <div className="rounded-2xl bg-blue-50 p-4">
+                    <div className="rounded-3xl bg-blue-50 p-5">
                       <p className="text-sm text-slate-500">Showing</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-blue-600">
-                        {stats.filtered}
+                      <h3 className="mt-2 text-3xl font-extrabold text-blue-700">
+                        {filteredLessonPacks.length}
                       </h3>
                     </div>
 
-                    <div className="rounded-2xl bg-violet-50 p-4">
+                    <div className="rounded-3xl bg-violet-50 p-5">
                       <p className="text-sm text-slate-500">Subjects</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-violet-600">
-                        {stats.subjects}
+                      <h3 className="mt-2 text-3xl font-extrabold text-violet-700">
+                        {totalSubjects}
                       </h3>
                     </div>
 
-                    <div className="rounded-2xl bg-amber-50 p-4">
+                    <div className="rounded-3xl bg-amber-50 p-5">
                       <p className="text-sm text-slate-500">Audio Ready</p>
-                      <h3 className="mt-2 text-3xl font-extrabold text-amber-600">
-                        {stats.audioReady}
+                      <h3 className="mt-2 text-3xl font-extrabold text-amber-700">
+                        {audioReadyCount}
                       </h3>
                     </div>
                   </div>
@@ -301,151 +349,159 @@ export default function AdminLessonPacksPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <section className="rounded-[32px] border border-white/70 bg-white/90 p-6 shadow-xl md:p-8">
+              <div className="mb-6">
+                <h2 className="text-3xl font-black text-slate-900">
+                  Manage Lesson Packs
+                </h2>
+                <p className="mt-2 text-lg text-slate-600">
+                  Filter by class and subject, search by title or chapter, then open,
+                  edit, or delete.
+                </p>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-[220px_220px_1fr]">
                 <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900">
-                    Manage Lesson Packs
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Filter by class and subject, search by title or chapter, then open or delete.
-                  </p>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Class
+                  </label>
+                  <select
+                    value={selectedClass}
+                    onChange={(e) => setSelectedClass(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-lg outline-none focus:border-blue-500"
+                  >
+                    {classOptions.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">
-                      Class
-                    </label>
-                    <select
-                      value={classFilter}
-                      onChange={(e) => setClassFilter(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                    >
-                      {CLASS_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Subject
+                  </label>
+                  <select
+                    value={selectedSubject}
+                    onChange={(e) => setSelectedSubject(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-lg outline-none focus:border-blue-500"
+                  >
+                    {subjectOptions.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">
-                      Subject
-                    </label>
-                    <select
-                      value={subjectFilter}
-                      onChange={(e) => setSubjectFilter(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                    >
-                      {SUBJECT_OPTIONS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">
-                      Search
-                    </label>
-                    <input
-                      type="text"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      placeholder="Search title, chapter, subject..."
-                      className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500"
-                    />
-                  </div>
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
+                    Search
+                  </label>
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search title, chapter, subject..."
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-lg outline-none focus:border-blue-500"
+                  />
                 </div>
               </div>
 
-              {message ? (
-                <div
-                  className={`mb-5 rounded-2xl px-4 py-3 text-sm font-semibold ${
-                    message.toLowerCase().includes("success")
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  {message}
+              {pageError ? (
+                <div className="mt-6 rounded-3xl border border-red-200 bg-red-50 px-6 py-5 text-lg font-semibold text-red-600">
+                  {pageError}
                 </div>
               ) : null}
 
               {loading ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                <div className="mt-8 rounded-3xl bg-slate-50 px-6 py-10 text-lg font-semibold text-slate-600">
                   Loading lesson packs...
                 </div>
               ) : filteredLessonPacks.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+                <div className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-lg text-slate-600">
                   No lesson packs found.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <div className="mt-8 grid gap-6">
                   {filteredLessonPacks.map((item) => {
+                    const title = normalizeText(item?.title, "Untitled Lesson");
+                    const className = normalizeText(item?.class_name, "-");
+                    const subjectName = normalizeText(
+                      item?.subject_name || item?.subject,
+                      "-"
+                    );
                     const chapterName = getChapterName(item);
                     const preview = getPreviewText(item);
-                    const lessonSubject = item?.subject || item?.subject_name || "-";
-                    const lessonClass = item?.class_name || "-";
 
                     return (
                       <div
                         key={item.id}
-                        className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md"
+                        className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-md transition hover:shadow-lg md:p-8"
                       >
-                        <div className="flex flex-wrap gap-2">
-                          <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="rounded-full bg-violet-100 px-4 py-2 text-sm font-bold text-violet-700">
                             Lesson Pack
                           </span>
-
-                          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                            {lessonSubject}
+                          <span className="rounded-full bg-blue-100 px-4 py-2 text-sm font-bold text-blue-700">
+                            {subjectName}
                           </span>
-
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                            {lessonClass}
+                          <span className="rounded-full bg-emerald-100 px-4 py-2 text-sm font-bold text-emerald-700">
+                            {className}
                           </span>
-
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                            {formatDate(item.created_at)}
+                          <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600">
+                            {formatDate(item?.created_at)}
                           </span>
-
-                          {hasAudio(item) ? (
-                            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
-                              Audio Ready
-                            </span>
-                          ) : null}
                         </div>
 
-                        <h3 className="mt-4 text-2xl font-extrabold text-slate-900">
-                          {item.title || "Untitled Lesson"}
+                        <h3 className="mt-5 text-3xl font-black text-slate-900">
+                          {title}
                         </h3>
 
-                        <p className="mt-2 text-sm text-slate-600">
-                          <span className="font-semibold text-slate-800">
-                            Chapter:
-                          </span>{" "}
-                          {chapterName}
-                        </p>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                            <p className="text-sm text-slate-500">Chapter</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900">
+                              {chapterName}
+                            </p>
+                          </div>
 
-                        <p className="mt-4 line-clamp-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">
-                          {preview}
-                        </p>
+                          <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                            <p className="text-sm text-slate-500">Audio</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900">
+                              {hasAudio(item) ? "Ready" : "Not Added"}
+                            </p>
+                          </div>
+                        </div>
 
-                        <div className="mt-5 flex flex-wrap gap-3">
+                        <div className="mt-5 rounded-2xl bg-slate-50 px-5 py-4">
+                          <p className="line-clamp-4 text-lg leading-8 text-slate-700">
+                            {preview}
+                          </p>
+                        </div>
+
+                        <div className="mt-6 flex flex-wrap gap-3">
                           <button
-                            onClick={() => openLesson(item.id)}
-                            className="rounded-2xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-violet-700"
+                            onClick={() => router.push(`/lesson/${item.id}`)}
+                            className="rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 py-3 font-bold text-white shadow-lg"
                           >
                             Open Lesson
                           </button>
 
                           <button
-                            onClick={() => handleDeleteLesson(item.id)}
+                            onClick={() =>
+                              router.push(`/admin-edit-lesson-pack/${item.id}`)
+                            }
+                            className="rounded-2xl bg-amber-500 px-5 py-3 font-bold text-white shadow-lg hover:bg-amber-600"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(item.id)}
                             disabled={deletingId === item.id}
-                            className="rounded-2xl bg-red-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="rounded-2xl bg-red-500 px-5 py-3 font-bold text-white shadow-lg hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             {deletingId === item.id ? "Deleting..." : "Delete"}
                           </button>
@@ -457,7 +513,7 @@ export default function AdminLessonPacksPage() {
               )}
             </section>
           </div>
-        </div>
+        </main>
       </div>
     </>
   );

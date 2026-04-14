@@ -1,346 +1,375 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
+function normalizeText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  if (!text || text.toUpperCase() === "NULL" || text.toUpperCase() === "EMPTY") {
+    return fallback;
+  }
+  return text;
+}
+
 function formatDate(value) {
   if (!value) return "-";
-
-  try {
-    return new Date(value).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return value;
-  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
-function getTextContent(item) {
-  return item?.question || item?.generated_paper_text || "";
+function formatMultiline(text) {
+  return normalizeText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
-function extractSection(fullText, label) {
-  const text = String(fullText || "");
-  const safeLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function buildPdfUrl(lesson) {
+  const directUrl = normalizeText(lesson?.lesson_pdf_url);
+  if (directUrl) return directUrl;
 
-  const regex = new RegExp(
-    `${safeLabel}:\\n([\\s\\S]*?)(?=\\n\\n(?:Chapter Name|Simple Explanation|Lesson Summary|Quick Revision|Previous Year Question Insights|Important Questions|Practice Questions|Audio Link):|$)`,
-    "i"
-  );
+  const fileUrl = normalizeText(lesson?.lesson_file_url);
+  if (fileUrl) return fileUrl;
 
-  const match = text.match(regex);
-  return match?.[1]?.trim() || "";
+  const fileUrls = Array.isArray(lesson?.lesson_file_urls) ? lesson.lesson_file_urls : [];
+  const firstUrl = fileUrls.find((item) => normalizeText(item));
+  if (firstUrl) return firstUrl;
+
+  return "";
 }
 
-function isValidLessonPack(item) {
-  const typeText = String(item?.type || "").trim().toLowerCase();
+function buildPdfName(lesson) {
+  const directName = normalizeText(lesson?.lesson_pdf_name);
+  if (directName) return directName;
+
+  const fileName = normalizeText(lesson?.lesson_file_name);
+  if (fileName) return fileName;
+
+  const fileNames = Array.isArray(lesson?.lesson_file_names) ? lesson.lesson_file_names : [];
+  const firstName = fileNames.find((item) => normalizeText(item));
+  if (firstName) return firstName;
+
+  return "Lesson PDF";
+}
+
+function ContentCard({ title, content, isList = false }) {
+  const listItems = useMemo(() => formatMultiline(content), [content]);
+  const hasText = normalizeText(content);
 
   return (
-    typeText === "lesson_pack" ||
-    typeText === "lesson pack" ||
-    typeText === "lessonpack"
-  );
-}
+    <div className="bg-white rounded-[28px] shadow-lg border border-slate-200 p-6 md:p-8">
+      <h2 className="text-2xl font-extrabold text-slate-900 mb-4">{title}</h2>
 
-function LessonSection({ title, content, bgClass = "bg-white" }) {
-  if (!content) return null;
-
-  return (
-    <div className={`rounded-3xl border border-slate-200 p-5 shadow-sm ${bgClass}`}>
-      <h3 className="text-xl font-extrabold text-slate-900">{title}</h3>
-      <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-        {content}
-      </div>
+      {!hasText ? (
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 text-slate-500">
+          Not added yet.
+        </div>
+      ) : isList ? (
+        <div className="space-y-3">
+          {listItems.map((item, index) => (
+            <div
+              key={`${title}-${index}`}
+              className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 text-slate-700 leading-7"
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-5 text-slate-700 leading-8 whitespace-pre-wrap">
+          {hasText}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function LessonDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const lessonId = params?.id;
 
-  const [userName, setUserName] = useState("User");
-  const [userRole, setUserRole] = useState("");
-  const [className, setClassName] = useState("");
-  const [isAllowed, setIsAllowed] = useState(false);
-
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
   const [lesson, setLesson] = useState(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const [showPdf, setShowPdf] = useState(false);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("erp_user");
+    const storedUser =
+      typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("smart_school_user") || localStorage.getItem("user") || "null")
+        : null;
 
     if (!storedUser) {
-      window.location.href = "/login";
+      router.push("/login");
       return;
     }
 
-    try {
-      const user = JSON.parse(storedUser);
-      const role = String(user?.role || "").toLowerCase();
-
-      if (!["student", "admin", "management"].includes(role)) {
-        window.location.href = "/login";
-        return;
-      }
-
-      setUserName(user?.name || user?.full_name || "User");
-      setUserRole(role);
-      setClassName(user?.class_name || user?.class || "");
-      setIsAllowed(true);
-    } catch (error) {
-      console.log("LESSON DETAIL AUTH ERROR:", error);
-      localStorage.removeItem("erp_user");
-      window.location.href = "/login";
-    }
-  }, []);
+    setUser(storedUser);
+  }, [router]);
 
   useEffect(() => {
-    if (!isAllowed) return;
-    if (!lessonId) return;
-
+    if (!lessonId || !user) return;
     fetchLesson();
-  }, [isAllowed, lessonId, className, userRole]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId, user]);
 
   async function fetchLesson() {
-    setLoading(true);
-    setErrorMessage("");
-
     try {
+      setLoading(true);
+      setPageError("");
+
       const { data, error } = await supabase
         .from("works")
         .select("*")
         .eq("id", lessonId)
+        .eq("type", "lesson_pack")
         .single();
 
-      if (error) {
-        console.log("FETCH LESSON DETAIL ERROR:", error);
-        setErrorMessage("Lesson not found.");
-        setLesson(null);
-        return;
-      }
+      if (error) throw error;
 
-      if (!data || !isValidLessonPack(data)) {
-        setErrorMessage("This lesson is not available.");
-        setLesson(null);
-        return;
-      }
-
-      const isStudentUser = userRole === "student";
-
-      if (
-        isStudentUser &&
-        className &&
-        data.class_name &&
-        String(data.class_name).trim().toLowerCase() !==
-          String(className).trim().toLowerCase()
-      ) {
-        setErrorMessage("This lesson is not assigned to your class.");
+      if (!data) {
+        setPageError("Lesson not found.");
         setLesson(null);
         return;
       }
 
       setLesson(data);
     } catch (error) {
-      console.log("UNEXPECTED LESSON DETAIL ERROR:", error);
-      setErrorMessage("Something went wrong while loading lesson.");
+      console.error("Failed to load lesson:", error);
+      setPageError(error?.message || "Failed to load lesson.");
       setLesson(null);
     } finally {
       setLoading(false);
     }
   }
 
-  const lessonData = useMemo(() => {
-    const fullText = getTextContent(lesson);
+  function handleLogout() {
+    localStorage.removeItem("smart_school_user");
+    localStorage.removeItem("user");
+    router.push("/login");
+  }
 
-    return {
-      chapterName: extractSection(fullText, "Chapter Name"),
-      simpleExplanation: extractSection(fullText, "Simple Explanation"),
-      lessonSummary: extractSection(fullText, "Lesson Summary"),
-      quickRevision: extractSection(fullText, "Quick Revision"),
-      previousYearInsights: extractSection(fullText, "Previous Year Question Insights"),
-      importantQuestions: extractSection(fullText, "Important Questions"),
-      practiceQuestions: extractSection(fullText, "Practice Questions"),
-      audioLink: extractSection(fullText, "Audio Link"),
-    };
-  }, [lesson]);
-
-  function goBack() {
-    if (userRole === "admin" || userRole === "management") {
-      window.location.href = "/admin-lesson-packs";
+  function handleBack() {
+    if (user?.role === "admin" || user?.role === "management") {
+      router.push("/admin-lesson-packs");
       return;
     }
 
-    window.location.href = "/student-lessons";
+    router.push("/student-lessons");
   }
 
-  if (!isAllowed) return null;
+  const title = normalizeText(lesson?.title, "Untitled Lesson");
+  const className = normalizeText(lesson?.class_name, "-");
+  const subjectName =
+    normalizeText(lesson?.subject_name) || normalizeText(lesson?.subject) || "-";
+  const chapterName = normalizeText(lesson?.chapter_name, "-");
+  const previewText =
+    normalizeText(lesson?.question) ||
+    normalizeText(lesson?.description) ||
+    normalizeText(lesson?.lesson_summary);
+
+  const simpleExplanation = normalizeText(lesson?.simple_explanation);
+  const lessonSummary = normalizeText(lesson?.lesson_summary);
+  const quickRevision = normalizeText(lesson?.quick_revision);
+  const pyqInsights =
+    normalizeText(lesson?.previous_year_question_insights) ||
+    normalizeText(lesson?.pyq_insights);
+  const importantQuestions = normalizeText(lesson?.important_questions);
+  const practiceQuestions = normalizeText(lesson?.practice_questions);
+  const audioLink =
+    normalizeText(lesson?.audio_url) ||
+    normalizeText(lesson?.audio_link);
+
+  const pdfUrl = buildPdfUrl(lesson);
+  const pdfName = buildPdfName(lesson);
 
   return (
-    <>
-      <Header name={userName} />
+    <div className="min-h-screen bg-slate-200">
+      <Header user={user} onLogout={handleLogout} />
 
-      <div className="flex min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-violet-100">
-        <Sidebar />
+      <div className="flex">
+        <Sidebar user={user} />
 
-        <div className="flex-1 p-4 sm:p-6">
-          <div className="mx-auto max-w-7xl space-y-6">
-            {loading ? (
-              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="text-sm font-semibold text-slate-600">
-                  Loading lesson...
-                </div>
+        <main className="flex-1 p-4 md:p-8">
+          {loading ? (
+            <div className="bg-white rounded-[32px] shadow-lg border border-slate-200 px-8 py-12 text-xl font-semibold text-slate-600">
+              Loading lesson...
+            </div>
+          ) : pageError ? (
+            <div className="bg-white rounded-[32px] shadow-lg border border-red-200 p-8">
+              <div className="rounded-2xl bg-red-50 text-red-700 px-6 py-5 text-xl font-semibold">
+                {pageError}
               </div>
-            ) : errorMessage ? (
-              <div className="rounded-[28px] border border-red-200 bg-white p-6 shadow-sm">
-                <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                  {errorMessage}
-                </div>
 
-                <div className="mt-4">
-                  <button
-                    onClick={goBack}
-                    className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-700"
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <section className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-xl backdrop-blur">
-                  <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                    <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-6 text-white sm:p-8">
-                      <div className="mb-3 inline-flex rounded-full bg-white/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.15em] text-white/95">
-                        AI Study Assistant
+              <button
+                onClick={handleBack}
+                className="mt-6 px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 text-white font-bold text-lg shadow-lg"
+              >
+                Back
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_1fr] gap-8">
+                <div className="rounded-[36px] overflow-hidden shadow-2xl border border-blue-300 bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 text-white">
+                  <div className="p-8 md:p-10">
+                    <div className="inline-block rounded-full bg-white/15 px-6 py-3 text-sm md:text-base font-bold tracking-[0.2em] uppercase mb-6">
+                      AI Study Assistant
+                    </div>
+
+                    <h1 className="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+                      {title}
+                    </h1>
+
+                    <div className="space-y-3 text-xl md:text-2xl">
+                      <div>
+                        <span className="font-bold">Class:</span> {className}
                       </div>
-
-                      <h1 className="text-3xl font-extrabold sm:text-4xl">
-                        {lesson?.title || "Lesson Detail"}
-                      </h1>
-
-                      <div className="mt-4 space-y-2 text-sm text-white/90 sm:text-base">
-                        <p>
-                          <span className="font-bold">Class:</span>{" "}
-                          {lesson?.class_name || className || "-"}
-                        </p>
-                        <p>
-                          <span className="font-bold">Subject:</span>{" "}
-                          {lesson?.subject || lesson?.subject_name || "-"}
-                        </p>
-                        <p>
-                          <span className="font-bold">Chapter:</span>{" "}
-                          {lessonData.chapterName || lesson?.chapter_name || "-"}
-                        </p>
+                      <div>
+                        <span className="font-bold">Subject:</span> {subjectName}
                       </div>
-
-                      <div className="mt-6 flex flex-wrap gap-3">
-                        <button
-                          onClick={goBack}
-                          className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-violet-700 transition hover:bg-slate-100"
-                        >
-                          Back
-                        </button>
-
-                        {lessonData.audioLink ? (
-                          <a
-                            href={lessonData.audioLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/20"
-                          >
-                            Open Audio
-                          </a>
-                        ) : null}
+                      <div>
+                        <span className="font-bold">Chapter:</span> {chapterName}
                       </div>
                     </div>
 
-                    <div className="p-6 sm:p-8">
-                      <h2 className="text-2xl font-extrabold text-slate-900">
-                        Lesson Info
-                      </h2>
+                    {previewText ? (
+                      <p className="mt-8 text-lg md:text-2xl leading-9 text-white/95">
+                        {previewText}
+                      </p>
+                    ) : null}
 
-                      <div className="mt-5 grid gap-4">
-                        <div className="rounded-2xl bg-slate-50 p-4">
-                          <p className="text-sm text-slate-500">Created On</p>
-                          <h3 className="mt-2 text-xl font-extrabold text-slate-900">
-                            {formatDate(lesson?.created_at)}
-                          </h3>
-                        </div>
+                    <div className="mt-8 flex flex-wrap gap-4">
+                      <button
+                        onClick={handleBack}
+                        className="px-8 py-4 rounded-2xl bg-white text-fuchsia-700 font-bold text-lg shadow-lg"
+                      >
+                        Back
+                      </button>
 
-                        <div className="rounded-2xl bg-blue-50 p-4">
-                          <p className="text-sm text-slate-500">Lesson Type</p>
-                          <h3 className="mt-2 text-xl font-extrabold text-blue-700">
-                            {lesson?.type || "lesson_pack"}
-                          </h3>
-                        </div>
+                      {pdfUrl ? (
+                        <button
+                          onClick={() => setShowPdf((prev) => !prev)}
+                          className="px-8 py-4 rounded-2xl border border-white/30 bg-white/10 text-white font-bold text-lg shadow-lg"
+                        >
+                          {showPdf ? "Hide PDF" : "View PDF"}
+                        </button>
+                      ) : null}
 
-                        <div className="rounded-2xl bg-amber-50 p-4">
-                          <p className="text-sm text-slate-500">Audio Support</p>
-                          <h3 className="mt-2 text-xl font-extrabold text-amber-700">
-                            {lessonData.audioLink ? "Available" : "Not Added"}
-                          </h3>
-                        </div>
-
-                        <div className="rounded-2xl bg-violet-50 p-4">
-                          <p className="text-sm text-slate-500">Preview Access</p>
-                          <h3 className="mt-2 text-xl font-extrabold capitalize text-violet-700">
-                            {userRole || "student"}
-                          </h3>
-                        </div>
-                      </div>
+                      {audioLink ? (
+                        <a
+                          href={audioLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-8 py-4 rounded-2xl border border-white/30 bg-white/10 text-white font-bold text-lg shadow-lg"
+                        >
+                          Open Audio
+                        </a>
+                      ) : null}
                     </div>
                   </div>
-                </section>
+                </div>
 
-                <section className="grid grid-cols-1 gap-5">
-                  <LessonSection
-                    title="Simple Explanation"
-                    content={lessonData.simpleExplanation}
-                    bgClass="bg-white"
-                  />
+                <div className="bg-white rounded-[36px] shadow-2xl border border-slate-200 p-6 md:p-8">
+                  <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 mb-8">
+                    Lesson Info
+                  </h2>
 
-                  <LessonSection
-                    title="Lesson Summary"
-                    content={lessonData.lessonSummary}
-                    bgClass="bg-blue-50"
-                  />
+                  <div className="space-y-6">
+                    <div className="rounded-[28px] bg-slate-50 border border-slate-200 px-6 py-6">
+                      <div className="text-slate-500 text-lg mb-3">Created On</div>
+                      <div className="text-3xl font-extrabold text-slate-900">
+                        {formatDate(lesson?.created_at)}
+                      </div>
+                    </div>
 
-                  <LessonSection
-                    title="Quick Revision"
-                    content={lessonData.quickRevision}
-                    bgClass="bg-violet-50"
-                  />
+                    <div className="rounded-[28px] bg-blue-50 border border-blue-100 px-6 py-6">
+                      <div className="text-slate-500 text-lg mb-3">Lesson Type</div>
+                      <div className="text-3xl font-extrabold text-blue-700">
+                        {normalizeText(lesson?.type, "-")}
+                      </div>
+                    </div>
 
-                  <LessonSection
-                    title="Previous Year Question Insights"
-                    content={lessonData.previousYearInsights}
-                    bgClass="bg-emerald-50"
-                  />
+                    <div className="rounded-[28px] bg-amber-50 border border-amber-100 px-6 py-6">
+                      <div className="text-slate-500 text-lg mb-3">Audio Support</div>
+                      <div className="text-3xl font-extrabold text-amber-700">
+                        {audioLink ? "Added" : "Not Added"}
+                      </div>
+                    </div>
 
-                  <LessonSection
-                    title="Important Questions"
-                    content={lessonData.importantQuestions}
-                    bgClass="bg-amber-50"
-                  />
+                    <div className="rounded-[28px] bg-violet-50 border border-violet-100 px-6 py-6">
+                      <div className="text-slate-500 text-lg mb-3">Preview Access</div>
+                      <div className="text-3xl font-extrabold text-violet-700">
+                        {user?.role === "admin" || user?.role === "management" ? "Admin" : "Student"}
+                      </div>
+                    </div>
 
-                  <LessonSection
-                    title="Practice Questions"
-                    content={lessonData.practiceQuestions}
-                    bgClass="bg-rose-50"
-                  />
-                </section>
-              </>
-            )}
-          </div>
-        </div>
+                    {pdfUrl ? (
+                      <div className="rounded-[28px] bg-emerald-50 border border-emerald-100 px-6 py-6">
+                        <div className="text-slate-500 text-lg mb-3">Lesson PDF</div>
+                        <a
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xl font-bold text-emerald-700 break-all"
+                        >
+                          {pdfName}
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {pdfUrl && showPdf ? (
+                <div className="bg-white rounded-[32px] shadow-lg border border-slate-200 p-6 md:p-8">
+                  <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+                    <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900">
+                      Original Lesson PDF
+                    </h2>
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 text-white font-bold"
+                    >
+                      Open in New Tab
+                    </a>
+                  </div>
+
+                  <div className="rounded-[24px] overflow-hidden border border-slate-200 bg-slate-100">
+                    <iframe
+                      src={pdfUrl}
+                      title="Lesson PDF"
+                      className="w-full h-[700px]"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 gap-8">
+                <ContentCard title="Simple Explanation" content={simpleExplanation} />
+                <ContentCard title="Lesson Summary" content={lessonSummary} />
+                <ContentCard title="Quick Revision" content={quickRevision} />
+                <ContentCard title="Previous Year Question Insights" content={pyqInsights} />
+                <ContentCard title="Important Questions" content={importantQuestions} isList />
+                <ContentCard title="Practice Questions" content={practiceQuestions} isList />
+              </div>
+            </div>
+          )}
+        </main>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,77 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import Header from "@/app/components/Header";
+import Sidebar from "@/app/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 
-const HEADING_MAP = {
-  chapter: "chapter",
-  "chapter name": "chapter",
-  "simple explanation": "simple_explanation",
-  "lesson summary": "lesson_summary",
-  "quick revision": "quick_revision",
-  "previous year question insights": "pyq_insights",
-  "important questions": "important_questions",
-  "practice questions": "practice_questions",
-  "audio link": "audio_link",
-};
+function normalizeText(value) {
+  return String(value || "").trim();
+}
 
-const DETECTED_LABELS = {
-  chapter: "Chapter",
-  simple_explanation: "Simple Explanation",
-  lesson_summary: "Lesson Summary",
-  quick_revision: "Quick Revision",
-  pyq_insights: "Previous Year Question Insights",
-  important_questions: "Important Questions",
-  practice_questions: "Practice Questions",
-  audio_link: "Audio Link",
-};
+function parseGeneratedLessonData(rawValue) {
+  if (!rawValue) return {};
 
-const BULK_PLACEHOLDER = `Chapter Name:
-Light Reflection and Refraction
+  if (typeof rawValue === "object") {
+    return rawValue;
+  }
 
-Simple Explanation:
-Light travels in a straight line. When light falls on a shiny surface, it bounces back. This is called reflection. Refraction means bending of light when it moves from one medium to another.
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    console.log("PARSE GENERATED LESSON DATA ERROR:", error);
+    return {};
+  }
+}
 
-Lesson Summary:
-This lesson explains reflection, refraction, ray diagrams, and common examples.
-
-Quick Revision:
-Reflection = bouncing of light.
-Refraction = bending of light.
-Mirror forms image.
-Lens bends light.
-
-Previous Year Question Insights:
-Define reflection.
-Explain refraction.
-Draw ray diagram.
-Difference between real image and virtual image.
-
-Important Questions:
-What is reflection?
-What is refraction?
-Differentiate between reflection and refraction.
-
-Practice Questions:
-Define reflection.
-Define refraction.
-Draw a simple ray diagram.
-
-Audio Link:
-https://example.com/audio`;
-
-function parseStoredUser() {
+function getStoredUser() {
   if (typeof window === "undefined") return null;
 
-  const possibleKeys = [
-    "user",
-    "adminUser",
-    "schoolUser",
-    "managementUser",
-    "teacherUser",
-    "studentUser",
-  ];
+  const possibleKeys = ["erp_user", "smart_school_user", "user"];
 
   for (const key of possibleKeys) {
     const raw = localStorage.getItem(key);
@@ -80,101 +37,63 @@ function parseStoredUser() {
     try {
       const parsed = JSON.parse(raw);
       if (parsed) return parsed;
-    } catch {
-      continue;
+    } catch (error) {
+      console.log("READ USER STORAGE ERROR:", key, error);
     }
   }
 
   return null;
 }
 
-function normalizeHeading(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/\*/g, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\s*:\s*$/, "")
-    .trim();
+function isAllowedRole(role) {
+  const normalizedRole = String(role || "").toLowerCase();
+  return ["admin", "management", "manager", "super_admin", "teacher"].includes(
+    normalizedRole
+  );
 }
 
-function cleanParsedValue(text) {
-  return String(text || "")
-    .replace(/^\s+|\s+$/g, "")
-    .replace(/\n{3,}/g, "\n\n");
-}
+function buildInitialForm(item) {
+  const parsed = parseGeneratedLessonData(item?.generated_paper_text);
 
-function parseLessonContent(rawText) {
-  const result = {
-    chapter: "",
-    simple_explanation: "",
-    lesson_summary: "",
-    quick_revision: "",
-    pyq_insights: "",
-    important_questions: "",
-    practice_questions: "",
-    audio_link: "",
+  return {
+    title: normalizeText(item?.title),
+    class_name: normalizeText(item?.class_name || item?.class),
+    subject: normalizeText(item?.subject_name || item?.subject),
+    chapter: normalizeText(item?.chapter || parsed?.chapter),
+    simple_explanation: normalizeText(
+      item?.simple_explanation || parsed?.simpleExplanation || item?.question
+    ),
+    lesson_summary: normalizeText(
+      item?.lesson_summary || parsed?.lessonSummary || item?.model_answer
+    ),
+    quick_revision: normalizeText(
+      item?.quick_revision || parsed?.quickRevision
+    ),
+    pyq_insights: normalizeText(
+      item?.pyq_insights || parsed?.previousYearInsights
+    ),
+    important_questions: normalizeText(
+      item?.important_questions || parsed?.importantQuestions
+    ),
+    practice_questions: normalizeText(
+      item?.practice_questions || parsed?.practiceQuestions
+    ),
+    audio_link: normalizeText(
+      item?.audio_link || item?.audio_url || parsed?.audioLink
+    ),
+    pdf_url: normalizeText(
+      item?.pdf_url ||
+        item?.file_url ||
+        item?.lesson_file_urls?.[0] ||
+        ""
+    ),
+    pdf_name: normalizeText(
+      item?.pdf_name ||
+        item?.file_name ||
+        item?.lesson_file_names?.[0] ||
+        ""
+    ),
   };
-
-  const text = String(rawText || "").replace(/\r\n/g, "\n").trim();
-  if (!text) return result;
-
-  const lines = text.split("\n");
-  let currentKey = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const originalLine = lines[i];
-    const trimmedLine = originalLine.trim();
-
-    if (!trimmedLine) {
-      if (currentKey) {
-        result[currentKey] += result[currentKey] ? "\n" : "";
-      }
-      continue;
-    }
-
-    const headingWithValue = trimmedLine.match(
-      /^(chapter name|chapter|simple explanation|lesson summary|quick revision|previous year question insights|important questions|practice questions|audio link)\s*:\s*(.*)$/i
-    );
-
-    if (headingWithValue) {
-      const headingText = normalizeHeading(headingWithValue[1]);
-      const detectedKey = HEADING_MAP[headingText] || null;
-      const inlineValue = cleanParsedValue(headingWithValue[2] || "");
-
-      currentKey = detectedKey;
-
-      if (currentKey) {
-        result[currentKey] = inlineValue;
-      }
-
-      continue;
-    }
-
-    const headingOnly = trimmedLine.match(
-      /^(chapter name|chapter|simple explanation|lesson summary|quick revision|previous year question insights|important questions|practice questions|audio link)\s*:?\s*$/i
-    );
-
-    if (headingOnly) {
-      const headingText = normalizeHeading(headingOnly[1]);
-      currentKey = HEADING_MAP[headingText] || null;
-
-      if (currentKey && !result[currentKey]) {
-        result[currentKey] = "";
-      }
-      continue;
-    }
-
-    if (currentKey) {
-      result[currentKey] += (result[currentKey] ? "\n" : "") + originalLine;
-    }
-  }
-
-  Object.keys(result).forEach((key) => {
-    result[key] = cleanParsedValue(result[key]);
-  });
-
-  return result;
 }
 
 export default function AdminEditLessonPackPage() {
@@ -182,13 +101,13 @@ export default function AdminEditLessonPackPage() {
   const params = useParams();
   const lessonId = params?.id;
 
-  const [ready, setReady] = useState(false);
-  const [adminName, setAdminName] = useState("Admin");
+  const [mounted, setMounted] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [fullLessonContent, setFullLessonContent] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -201,316 +120,283 @@ export default function AdminEditLessonPackPage() {
     pyq_insights: "",
     important_questions: "",
     practice_questions: "",
+    audio_link: "",
     pdf_url: "",
     pdf_name: "",
-    audio_link: "",
-    lesson_type: "lesson_pack",
   });
 
   useEffect(() => {
-    const savedUser = parseStoredUser();
-
-    if (!savedUser) {
-      router.replace("/login");
-      return;
-    }
-
-    setAdminName(savedUser?.name || "Admin");
-    setReady(true);
-  }, [router]);
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    if (!lessonId) return;
+    if (!mounted) return;
+
+    try {
+      const storedUser = getStoredUser();
+
+      if (!storedUser) {
+        router.replace("/login");
+        return;
+      }
+
+      if (!isAllowedRole(storedUser?.role)) {
+        router.replace("/login");
+        return;
+      }
+
+      setCurrentUser(storedUser);
+    } catch (error) {
+      console.log("ADMIN EDIT LESSON PACK AUTH ERROR:", error);
+      localStorage.removeItem("erp_user");
+      localStorage.removeItem("smart_school_user");
+      localStorage.removeItem("user");
+      router.replace("/login");
+    }
+  }, [mounted, router]);
+
+  useEffect(() => {
+    if (!currentUser || !lessonId) return;
     fetchLessonPack();
-  }, [ready, lessonId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, lessonId]);
 
   async function fetchLessonPack() {
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    const { data, error } = await supabase
-      .from("works")
-      .select("*")
-      .eq("id", lessonId)
-      .single();
-
-    if (error) {
-      setError(error.message || "Could not load lesson pack.");
-      setLoading(false);
-      return;
-    }
-
-    if (!data) {
-      setError("Lesson pack not found.");
-      setLoading(false);
-      return;
-    }
-
-    let parsedGenerated = {};
     try {
-      parsedGenerated = data.generated_paper_text
-        ? JSON.parse(data.generated_paper_text)
-        : {};
-    } catch {
-      parsedGenerated = {};
+      setLoading(true);
+      setPageError("");
+      setSuccessMessage("");
+
+      const { data, error } = await supabase
+        .from("works")
+        .select("*")
+        .eq("id", lessonId)
+        .eq("type", "lesson_pack")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error("Lesson pack not found.");
+      }
+
+      setForm(buildInitialForm(data));
+    } catch (error) {
+      console.error("FAILED TO LOAD LESSON PACK:", error);
+      setPageError(error?.message || "Failed to load lesson pack.");
+    } finally {
+      setLoading(false);
     }
-
-    setForm({
-      title: data.title || "",
-      class_name: data.class_name || data.class || "",
-      subject: data.subject || data.subject_name || "",
-      chapter: data.chapter || parsedGenerated.chapter || "",
-      simple_explanation:
-        data.simple_explanation ||
-        parsedGenerated.simpleExplanation ||
-        parsedGenerated.simple_explanation ||
-        data.question ||
-        "",
-      lesson_summary:
-        data.lesson_summary ||
-        parsedGenerated.lessonSummary ||
-        parsedGenerated.lesson_summary ||
-        "",
-      quick_revision:
-        data.quick_revision ||
-        parsedGenerated.quickRevision ||
-        parsedGenerated.quick_revision ||
-        "",
-      pyq_insights:
-        data.pyq_insights ||
-        parsedGenerated.previousYearInsights ||
-        parsedGenerated.previous_year_insights ||
-        parsedGenerated.pyq_insights ||
-        "",
-      important_questions:
-        data.important_questions ||
-        parsedGenerated.importantQuestions ||
-        parsedGenerated.important_questions ||
-        "",
-      practice_questions:
-        data.practice_questions ||
-        parsedGenerated.practiceQuestions ||
-        parsedGenerated.practice_questions ||
-        "",
-      pdf_url: data.pdf_url || data.file_url || "",
-      pdf_name: data.pdf_name || data.file_name || "",
-      audio_link:
-        data.audio_link ||
-        parsedGenerated.audioLink ||
-        parsedGenerated.audio_link ||
-        "",
-      lesson_type: data.lesson_type || data.type || "lesson_pack",
-    });
-
-    setLoading(false);
   }
 
-  function handleChange(e) {
-    const { name, value } = e.target;
+  function handleChange(event) {
+    const { name, value } = event.target;
+
     setForm((prev) => ({
       ...prev,
       [name]: value,
     }));
   }
 
-  function handleAutoFill() {
-    const parsed = parseLessonContent(fullLessonContent);
-    const detectedCount = Object.values(parsed).filter((value) => String(value || "").trim()).length;
+  async function handleSubmit(event) {
+    event.preventDefault();
 
-    if (detectedCount === 0) {
-      setError("No supported headings were detected. Please check the pasted format.");
-      setSuccess("");
-      return;
-    }
+    try {
+      setSaving(true);
+      setPageError("");
+      setSuccessMessage("");
 
-    setForm((prev) => ({
-      ...prev,
-      chapter: parsed.chapter || prev.chapter,
-      simple_explanation: parsed.simple_explanation || prev.simple_explanation,
-      lesson_summary: parsed.lesson_summary || prev.lesson_summary,
-      quick_revision: parsed.quick_revision || prev.quick_revision,
-      pyq_insights: parsed.pyq_insights || prev.pyq_insights,
-      important_questions: parsed.important_questions || prev.important_questions,
-      practice_questions: parsed.practice_questions || prev.practice_questions,
-      audio_link: parsed.audio_link || prev.audio_link,
-    }));
+      if (!normalizeText(form.title)) {
+        throw new Error("Title is required.");
+      }
 
-    setError("");
-    setSuccess("Content detected and fields auto-filled. You can still edit everything manually.");
-  }
+      if (!normalizeText(form.class_name)) {
+        throw new Error("Class is required.");
+      }
 
-  function clearBulkContentOnly() {
-    setFullLessonContent("");
-    setError("");
-    setSuccess("Full lesson content box cleared.");
-  }
+      if (!normalizeText(form.subject)) {
+        throw new Error("Subject is required.");
+      }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    setError("");
-    setSuccess("");
+      if (!normalizeText(form.simple_explanation)) {
+        throw new Error("Simple Explanation is required.");
+      }
 
-    const structuredLessonData = {
-      chapter: form.chapter || "",
-      simpleExplanation: form.simple_explanation || "",
-      lessonSummary: form.lesson_summary || "",
-      quickRevision: form.quick_revision || "",
-      previousYearInsights: form.pyq_insights || "",
-      importantQuestions: form.important_questions || "",
-      practiceQuestions: form.practice_questions || "",
-      audioLink: form.audio_link || "",
-    };
+      const structuredLessonData = {
+        chapter: normalizeText(form.chapter),
+        simpleExplanation: normalizeText(form.simple_explanation),
+        lessonSummary: normalizeText(form.lesson_summary),
+        quickRevision: normalizeText(form.quick_revision),
+        previousYearInsights: normalizeText(form.pyq_insights),
+        importantQuestions: normalizeText(form.important_questions),
+        practiceQuestions: normalizeText(form.practice_questions),
+        audioLink: normalizeText(form.audio_link),
+      };
 
-    const payload = {
-      title: form.title,
-      class_name: form.class_name,
-      subject: form.subject,
-      chapter: form.chapter,
-      simple_explanation: form.simple_explanation,
-      lesson_summary: form.lesson_summary,
-      quick_revision: form.quick_revision,
-      pyq_insights: form.pyq_insights,
-      important_questions: form.important_questions,
-      practice_questions: form.practice_questions,
-      pdf_url: form.pdf_url,
-      pdf_name: form.pdf_name,
-      audio_link: form.audio_link,
-      lesson_type: "lesson_pack",
-      type: "lesson_pack",
-      generated_paper_text: JSON.stringify(structuredLessonData),
-      updated_at: new Date().toISOString(),
-    };
+      const payload = {
+        title: normalizeText(form.title),
+        question: normalizeText(form.simple_explanation),
+        model_answer: normalizeText(form.lesson_summary),
+        type: "lesson_pack",
+        lesson_type: "lesson_pack",
+        class_name: normalizeText(form.class_name),
+        subject_name: normalizeText(form.subject),
+        subject: normalizeText(form.subject),
+        chapter: normalizeText(form.chapter),
+        simple_explanation: normalizeText(form.simple_explanation),
+        lesson_summary: normalizeText(form.lesson_summary),
+        quick_revision: normalizeText(form.quick_revision),
+        pyq_insights: normalizeText(form.pyq_insights),
+        important_questions: normalizeText(form.important_questions),
+        practice_questions: normalizeText(form.practice_questions),
+        audio_link: normalizeText(form.audio_link),
+        pdf_url: normalizeText(form.pdf_url),
+        pdf_name: normalizeText(form.pdf_name),
+        file_url: normalizeText(form.pdf_url),
+        file_name: normalizeText(form.pdf_name),
+        lesson_file_urls: normalizeText(form.pdf_url)
+          ? [normalizeText(form.pdf_url)]
+          : [],
+        lesson_file_names: normalizeText(form.pdf_name)
+          ? [normalizeText(form.pdf_name)]
+          : [],
+        generated_paper_text: JSON.stringify(structuredLessonData),
+        updated_at: new Date().toISOString(),
+      };
 
-    const { error } = await supabase
-      .from("works")
-      .update(payload)
-      .eq("id", lessonId);
+      const { error } = await supabase
+        .from("works")
+        .update(payload)
+        .eq("id", lessonId)
+        .eq("type", "lesson_pack");
 
-    if (error) {
-      setError(error.message || "Failed to update lesson pack.");
+      if (error) {
+        throw error;
+      }
+
+      setSuccessMessage("Lesson pack updated successfully.");
+    } catch (error) {
+      console.error("FAILED TO UPDATE LESSON PACK:", error);
+      setPageError(error?.message || "Failed to update lesson pack.");
+    } finally {
       setSaving(false);
-      return;
     }
-
-    setSuccess("Lesson pack updated successfully.");
-    setSaving(false);
   }
 
   function handleLogout() {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("user");
-      localStorage.removeItem("adminUser");
-      localStorage.removeItem("schoolUser");
-      localStorage.removeItem("managementUser");
-      localStorage.removeItem("teacherUser");
-      localStorage.removeItem("studentUser");
-    }
+    localStorage.removeItem("erp_user");
+    localStorage.removeItem("smart_school_user");
+    localStorage.removeItem("user");
     router.replace("/login");
   }
 
   const pageTitle = useMemo(() => {
-    return form.title || "Edit Lesson Pack";
+    return normalizeText(form.title) || "Edit Lesson Pack";
   }, [form.title]);
 
-  const detectedPreview = useMemo(() => {
-    return parseLessonContent(fullLessonContent);
-  }, [fullLessonContent]);
-
-  if (!ready) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.centerCard}>Checking login...</div>
-      </div>
-    );
-  }
+  if (!mounted) return null;
+  if (!currentUser) return null;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.hero}>
-          <div>
-            <div style={styles.badge}>AI STUDY ASSISTANT</div>
-            <h1 style={styles.heroTitle}>Edit Lesson Pack</h1>
-            <p style={styles.heroText}>
-              Update saved lesson pack content carefully and safely.
-            </p>
-          </div>
+    <div className="min-h-screen bg-slate-100">
+      <Header
+        name={
+          currentUser?.name ||
+          currentUser?.full_name ||
+          currentUser?.username ||
+          "Admin"
+        }
+      />
 
-          <div style={styles.heroButtons}>
-            <button
-              onClick={() => router.push("/admin-lesson-packs")}
-              style={styles.lightButton}
-            >
-              Back to List
-            </button>
+      <div className="flex">
+        <Sidebar role={currentUser?.role} />
 
-            <button onClick={handleLogout} style={styles.dangerButton}>
-              Logout
-            </button>
-          </div>
-        </div>
-
-        <div style={styles.layout}>
-          <div style={styles.mainCard}>
-            {loading ? (
-              <div style={styles.messageBox}>Loading lesson pack...</div>
-            ) : (
-              <>
-                <div style={styles.sectionTop}>
-                  <h2 style={styles.sectionTitle}>{pageTitle}</h2>
-                  <div style={styles.smallMuted}>Editing ID: {lessonId}</div>
-                </div>
-
-                <div style={styles.bulkCard}>
-                  <div style={styles.bulkHeader}>
-                    <div>
-                      <h3 style={styles.bulkTitle}>Full Lesson Content</h3>
-                      <p style={styles.bulkText}>
-                        Paste the full lesson in one block, auto-detect sections, then edit manually if needed.
-                      </p>
-                    </div>
-
-                    <div style={styles.bulkActions}>
-                      <button type="button" onClick={handleAutoFill} style={styles.primarySmallButton}>
-                        Auto Fill Fields
-                      </button>
-
-                      <button type="button" onClick={clearBulkContentOnly} style={styles.secondarySmallButton}>
-                        Clear Box
-                      </button>
-                    </div>
+        <main className="w-full p-4 md:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <section className="overflow-hidden rounded-[32px] border border-white/70 bg-white/90 shadow-xl">
+              <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8 text-white md:p-10">
+                  <div className="inline-flex rounded-full bg-white/15 px-5 py-2 text-xs font-bold uppercase tracking-[0.22em] text-white/95">
+                    AI Study Assistant
                   </div>
 
-                  <textarea
-                    value={fullLessonContent}
-                    onChange={(e) => setFullLessonContent(e.target.value)}
-                    rows={14}
-                    placeholder={BULK_PLACEHOLDER}
-                    style={styles.bulkTextarea}
-                  />
+                  <h1 className="mt-5 text-4xl font-black md:text-6xl">
+                    Edit Lesson Pack
+                  </h1>
 
-                  <div style={styles.previewGrid}>
-                    {Object.entries(DETECTED_LABELS).map(([key, label]) => (
-                      <div key={key} style={styles.previewCard}>
-                        <div style={styles.previewLabel}>{label}</div>
-                        <div style={styles.previewValue}>{detectedPreview[key] || "—"}</div>
+                  <p className="mt-6 max-w-3xl text-lg leading-9 text-white/95">
+                    Update saved lesson pack content carefully and safely.
+                  </p>
+
+                  <div className="mt-8 flex flex-wrap gap-4">
+                    <button
+                      onClick={() => router.push("/admin-lesson-packs")}
+                      className="rounded-2xl bg-white px-6 py-3 text-base font-bold text-violet-700 shadow-lg transition hover:scale-[1.02]"
+                    >
+                      Back to List
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="rounded-2xl bg-red-500 px-6 py-3 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] hover:bg-red-600"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-8 md:p-10">
+                  <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Editing
+                    </p>
+                    <h2 className="mt-3 text-3xl font-black text-slate-900">
+                      {pageTitle}
+                    </h2>
+                    <p className="mt-3 break-all text-sm text-slate-500">
+                      Lesson ID: {lessonId}
+                    </p>
+
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-sm text-slate-500">Admin</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">
+                          {currentUser?.name ||
+                            currentUser?.full_name ||
+                            currentUser?.username ||
+                            "Admin"}
+                        </p>
                       </div>
-                    ))}
+
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-sm text-slate-500">Role</p>
+                        <p className="mt-1 text-lg font-bold capitalize text-slate-900">
+                          {currentUser?.role || "admin"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </section>
 
-                <form onSubmit={handleSubmit}>
-                  <div style={styles.grid2}>
-                    <Input
+            <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-lg md:p-8">
+              {loading ? (
+                <div className="rounded-2xl bg-slate-50 p-6 text-lg font-semibold text-slate-700">
+                  Loading lesson pack...
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <InputField
                       label="Title"
                       name="title"
                       value={form.title}
                       onChange={handleChange}
                     />
-                    <Input
+                    <InputField
                       label="Chapter"
                       name="chapter"
                       value={form.chapter}
@@ -518,14 +404,14 @@ export default function AdminEditLessonPackPage() {
                     />
                   </div>
 
-                  <div style={styles.grid2}>
-                    <Input
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <InputField
                       label="Class"
                       name="class_name"
                       value={form.class_name}
                       onChange={handleChange}
                     />
-                    <Input
+                    <InputField
                       label="Subject"
                       name="subject"
                       value={form.subject}
@@ -533,15 +419,15 @@ export default function AdminEditLessonPackPage() {
                     />
                   </div>
 
-                  <Textarea
+                  <TextAreaField
                     label="Simple Explanation"
                     name="simple_explanation"
                     value={form.simple_explanation}
                     onChange={handleChange}
-                    rows={5}
+                    rows={6}
                   />
 
-                  <Textarea
+                  <TextAreaField
                     label="Lesson Summary"
                     name="lesson_summary"
                     value={form.lesson_summary}
@@ -549,46 +435,46 @@ export default function AdminEditLessonPackPage() {
                     rows={5}
                   />
 
-                  <Textarea
+                  <TextAreaField
                     label="Quick Revision"
                     name="quick_revision"
                     value={form.quick_revision}
                     onChange={handleChange}
-                    rows={4}
+                    rows={5}
                   />
 
-                  <Textarea
+                  <TextAreaField
                     label="Previous Year Question Insights"
                     name="pyq_insights"
                     value={form.pyq_insights}
                     onChange={handleChange}
-                    rows={4}
+                    rows={5}
                   />
 
-                  <Textarea
+                  <TextAreaField
                     label="Important Questions"
                     name="important_questions"
                     value={form.important_questions}
                     onChange={handleChange}
-                    rows={5}
+                    rows={6}
                   />
 
-                  <Textarea
+                  <TextAreaField
                     label="Practice Questions"
                     name="practice_questions"
                     value={form.practice_questions}
                     onChange={handleChange}
-                    rows={5}
+                    rows={6}
                   />
 
-                  <div style={styles.grid2}>
-                    <Input
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <InputField
                       label="Audio Link"
                       name="audio_link"
                       value={form.audio_link}
                       onChange={handleChange}
                     />
-                    <Input
+                    <InputField
                       label="PDF URL"
                       name="pdf_url"
                       value={form.pdf_url}
@@ -596,386 +482,84 @@ export default function AdminEditLessonPackPage() {
                     />
                   </div>
 
-                  <Input
-                    label="PDF Name"
-                    name="pdf_name"
-                    value={form.pdf_name}
-                    onChange={handleChange}
-                  />
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <InputField
+                      label="PDF Name"
+                      name="pdf_name"
+                      value={form.pdf_name}
+                      onChange={handleChange}
+                    />
+                  </div>
 
-                  {error ? <div style={styles.errorBox}>{error}</div> : null}
-                  {success ? <div style={styles.successBox}>{success}</div> : null}
+                  {pageError ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                      {pageError}
+                    </div>
+                  ) : null}
 
-                  <div style={styles.actionRow}>
-                    <button type="submit" disabled={saving} style={styles.saveButton}>
-                      {saving ? "Updating..." : "Update Lesson Pack"}
+                  {successMessage ? (
+                    <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+                      {successMessage}
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-4 pt-2">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-2xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 py-3 text-base font-bold text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving ? "Saving Changes..." : "Save Changes"}
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => router.push(`/lesson/${lessonId}`)}
-                      style={styles.previewButton}
+                      onClick={() => router.push("/admin-lesson-packs")}
+                      className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-base font-bold text-slate-700 transition hover:bg-slate-50"
                     >
-                      Open Lesson Preview
+                      Back to Lesson Packs
                     </button>
                   </div>
                 </form>
-              </>
-            )}
+              )}
+            </section>
           </div>
-
-          <div style={styles.sideCard}>
-            <Info label="Logged In Admin" value={adminName} />
-            <Info label="Lesson ID" value={lessonId || "-"} />
-            <Info label="Database Table" value="works" />
-            <Info label="Lesson Type" value="lesson_pack" />
-          </div>
-        </div>
+        </main>
       </div>
     </div>
   );
 }
 
-function Input({ label, name, value, onChange }) {
+function InputField({ label, name, value, onChange }) {
   return (
-    <div style={{ marginBottom: "16px" }}>
-      <label style={styles.label}>{label}</label>
+    <div>
+      <label className="mb-2 block text-sm font-bold text-slate-700">
+        {label}
+      </label>
       <input
+        type="text"
         name={name}
         value={value}
         onChange={onChange}
-        style={styles.input}
+        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
       />
     </div>
   );
 }
 
-function Textarea({ label, name, value, onChange, rows = 5 }) {
+function TextAreaField({ label, name, value, onChange, rows = 5 }) {
   return (
-    <div style={{ marginBottom: "16px" }}>
-      <label style={styles.label}>{label}</label>
+    <div>
+      <label className="mb-2 block text-sm font-bold text-slate-700">
+        {label}
+      </label>
       <textarea
+        rows={rows}
         name={name}
         value={value}
         onChange={onChange}
-        rows={rows}
-        style={styles.textarea}
+        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none transition focus:border-blue-500"
       />
     </div>
   );
 }
-
-function Info({ label, value }) {
-  return (
-    <div style={styles.infoBox}>
-      <div style={styles.infoLabel}>{label}</div>
-      <div style={styles.infoValue}>{value || "-"}</div>
-    </div>
-  );
-}
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#eef3fb",
-    padding: "24px",
-    fontFamily: "Arial, sans-serif",
-  },
-  container: {
-    maxWidth: "1200px",
-    margin: "0 auto",
-  },
-  hero: {
-    background: "linear-gradient(135deg, #2563eb, #9333ea)",
-    color: "#fff",
-    borderRadius: "24px",
-    padding: "28px",
-    marginBottom: "24px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "16px",
-    flexWrap: "wrap",
-  },
-  badge: {
-    display: "inline-block",
-    background: "rgba(255,255,255,0.18)",
-    padding: "10px 16px",
-    borderRadius: "999px",
-    fontSize: "13px",
-    fontWeight: "800",
-    letterSpacing: "2px",
-    marginBottom: "12px",
-  },
-  heroTitle: {
-    margin: 0,
-    fontSize: "44px",
-    lineHeight: 1.1,
-    fontWeight: "800",
-  },
-  heroText: {
-    marginTop: "12px",
-    marginBottom: 0,
-    fontSize: "18px",
-    maxWidth: "760px",
-  },
-  heroButtons: {
-    display: "flex",
-    gap: "12px",
-    flexWrap: "wrap",
-  },
-  lightButton: {
-    border: "none",
-    background: "#fff",
-    color: "#6d28d9",
-    padding: "12px 18px",
-    borderRadius: "12px",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-  dangerButton: {
-    border: "none",
-    background: "#ef4444",
-    color: "#fff",
-    padding: "12px 18px",
-    borderRadius: "12px",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)",
-    gap: "24px",
-  },
-  mainCard: {
-    background: "#fff",
-    borderRadius: "20px",
-    padding: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  },
-  sideCard: {
-    background: "#fff",
-    borderRadius: "20px",
-    padding: "24px",
-    height: "fit-content",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  },
-  centerCard: {
-    maxWidth: "500px",
-    margin: "80px auto",
-    background: "#fff",
-    borderRadius: "20px",
-    padding: "30px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-    textAlign: "center",
-    fontSize: "18px",
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  messageBox: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: "14px",
-    padding: "16px",
-    color: "#334155",
-    fontWeight: "600",
-  },
-  sectionTop: {
-    marginBottom: "20px",
-  },
-  sectionTitle: {
-    fontSize: "28px",
-    fontWeight: "800",
-    margin: 0,
-    color: "#0f172a",
-  },
-  smallMuted: {
-    marginTop: "6px",
-    fontSize: "13px",
-    color: "#64748b",
-  },
-  bulkCard: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: "18px",
-    padding: "18px",
-    marginBottom: "22px",
-  },
-  bulkHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: "14px",
-    flexWrap: "wrap",
-    marginBottom: "14px",
-  },
-  bulkTitle: {
-    margin: 0,
-    fontSize: "22px",
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  bulkText: {
-    marginTop: "6px",
-    marginBottom: 0,
-    color: "#475569",
-    fontSize: "14px",
-    lineHeight: 1.6,
-    maxWidth: "760px",
-  },
-  bulkActions: {
-    display: "flex",
-    gap: "10px",
-    flexWrap: "wrap",
-  },
-  primarySmallButton: {
-    border: "none",
-    background: "#0f172a",
-    color: "#fff",
-    padding: "10px 14px",
-    borderRadius: "12px",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-  secondarySmallButton: {
-    border: "1px solid #cbd5e1",
-    background: "#fff",
-    color: "#334155",
-    padding: "10px 14px",
-    borderRadius: "12px",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-  bulkTextarea: {
-    width: "100%",
-    borderRadius: "16px",
-    border: "1px solid #cbd5e1",
-    padding: "14px",
-    fontSize: "14px",
-    color: "#0f172a",
-    resize: "vertical",
-    outline: "none",
-    boxSizing: "border-box",
-    marginBottom: "16px",
-  },
-  previewGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: "12px",
-  },
-  previewCard: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: "14px",
-    padding: "14px",
-  },
-  previewLabel: {
-    fontSize: "13px",
-    fontWeight: "700",
-    color: "#334155",
-    marginBottom: "8px",
-  },
-  previewValue: {
-    fontSize: "14px",
-    color: "#475569",
-    whiteSpace: "pre-wrap",
-    lineHeight: 1.6,
-  },
-  grid2: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "16px",
-  },
-  label: {
-    display: "block",
-    marginBottom: "8px",
-    fontSize: "14px",
-    fontWeight: "700",
-    color: "#334155",
-  },
-  input: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #cbd5e1",
-    borderRadius: "14px",
-    padding: "12px 14px",
-    fontSize: "14px",
-    color: "#0f172a",
-    outline: "none",
-  },
-  textarea: {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #cbd5e1",
-    borderRadius: "14px",
-    padding: "12px 14px",
-    fontSize: "14px",
-    color: "#0f172a",
-    resize: "vertical",
-    outline: "none",
-  },
-  errorBox: {
-    marginTop: "16px",
-    marginBottom: "16px",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    color: "#b91c1c",
-    borderRadius: "14px",
-    padding: "14px 16px",
-    fontWeight: "700",
-  },
-  successBox: {
-    marginTop: "16px",
-    marginBottom: "16px",
-    background: "#ecfdf5",
-    border: "1px solid #a7f3d0",
-    color: "#047857",
-    borderRadius: "14px",
-    padding: "14px 16px",
-    fontWeight: "700",
-  },
-  actionRow: {
-    display: "flex",
-    gap: "12px",
-    flexWrap: "wrap",
-  },
-  saveButton: {
-    border: "none",
-    background: "linear-gradient(135deg, #2563eb, #9333ea)",
-    color: "#fff",
-    padding: "13px 18px",
-    borderRadius: "14px",
-    fontWeight: "800",
-    cursor: "pointer",
-  },
-  previewButton: {
-    border: "1px solid #cbd5e1",
-    background: "#fff",
-    color: "#334155",
-    padding: "13px 18px",
-    borderRadius: "14px",
-    fontWeight: "700",
-    cursor: "pointer",
-  },
-  infoBox: {
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    borderRadius: "14px",
-    padding: "14px",
-    marginBottom: "12px",
-  },
-  infoLabel: {
-    fontSize: "12px",
-    fontWeight: "700",
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    marginBottom: "6px",
-  },
-  infoValue: {
-    fontSize: "15px",
-    fontWeight: "700",
-    color: "#0f172a",
-    wordBreak: "break-word",
-  },
-};
